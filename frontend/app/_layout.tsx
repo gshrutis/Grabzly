@@ -41,6 +41,7 @@ export default function RootLayout() {
               <Stack.Screen name="store/[id]" />
               <Stack.Screen name="claim/[id]" options={{ presentation: "modal", gestureEnabled: false }} />
               <Stack.Screen name="search" />
+              <Stack.Screen name="merchant" />
             </Stack>
           </LocationProvider>
         </AuthProvider>

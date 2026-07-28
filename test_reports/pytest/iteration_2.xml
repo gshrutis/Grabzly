@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="25" time="11.348" timestamp="2026-07-28T20:03:27.335127+00:00" hostname="agent-env-d44356f5-6676-458b-a13d-77ce4a261213"><testcase classname="tests.test_phase2_merchant_loyalty.TestPhase1Regression" name="test_categories" time="0.313" /><testcase classname="tests.test_phase2_merchant_loyalty.TestPhase1Regression" name="test_merchants_list" time="0.353" /><testcase classname="tests.test_phase2_merchant_loyalty.TestPhase1Regression" name="test_deals_list" time="0.161" /><testcase classname="tests.test_phase2_merchant_loyalty.TestMerchantDeals" name="test_create_deal_auto_discount" time="0.890" /><testcase classname="tests.test_phase2_merchant_loyalty.TestPhase1Regression" name="test_deals_live_now" time="0.106" /><testcase classname="tests.test_phase2_merchant_loyalty.TestMerchantDeals" name="test_create_draft_excluded_from_public" time="0.845" /><testcase classname="tests.test_phase2_merchant_loyalty.TestPhase1Regression" name="test_deals_reels" time="0.376" /><testcase classname="tests.test_phase2_merchant_loyalty.TestRegistrationReferral" name="test_register_returns_referral_code" time="0.388" /><testcase classname="tests.test_phase2_merchant_loyalty.TestRegistrationReferral" name="test_register_accepts_referral_code_and_links" time="0.789" /><testcase classname="tests.test_phase2_merchant_loyalty.TestMerchantDeals" name="test_patch_deal_quantity_delta" time="0.120" /><testcase classname="tests.test_phase2_merchant_loyalty.TestMerchantDeals" name="test_end_deal" time="1.037" /><testcase classname="tests.test_phase2_merchant_loyalty.TestRegistrationReferral" name="test_register_unknown_referral_code_ignored" time="0.408" /><testcase classname="tests.test_phase2_merchant_loyalty.TestMerchantDeals" name="test_duplicate_deal_creates_draft_copy" time="0.426" /><testcase classname="tests.test_phase2_merchant_loyalty.TestMerchantOnboard" name="test_onboard_elevates_role_and_verifies" time="0.872" /><testcase classname="tests.test_phase2_merchant_loyalty.TestMerchantDeals" name="test_delete_soft_deletes" time="1.148"><failure message="requests.exceptions.JSONDecodeError: Expecting value: line 1 column 1 (char 0)">/root/.venv/lib/python3.11/site-packages/requests/models.py:1116: in json
+    return complexjson.loads(self.text, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/json/__init__.py:346: in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/json/decoder.py:337: in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/json/decoder.py:355: in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+E   json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+During handling of the above exception, another exception occurred:
+backend/tests/test_phase2_merchant_loyalty.py:182: in test_delete_soft_deletes
+    public = requests.get(f"{API}/deals").json()
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/models.py:1120: in json
+    raise RequestsJSONDecodeError(e.msg, e.doc, e.pos)
+E   requests.exceptions.JSONDecodeError: Expecting value: line 1 column 1 (char 0)</failure></testcase><testcase classname="tests.test_phase2_merchant_loyalty.TestMerchantOnboard" name="test_merchant_me_forbidden_for_customer" time="0.653" /><testcase classname="tests.test_phase2_merchant_loyalty.TestMerchantOnboard" name="test_merchant_me_ok_and_patch" time="1.036" /><testcase classname="tests.test_phase2_merchant_loyalty.TestMerchantDeals" name="test_paused_deal_excluded_from_public" time="0.856"><failure message="requests.exceptions.JSONDecodeError: Expecting value: line 1 column 1 (char 0)">/root/.venv/lib/python3.11/site-packages/requests/models.py:1116: in json
+    return complexjson.loads(self.text, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/json/__init__.py:346: in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/json/decoder.py:337: in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/json/decoder.py:355: in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+E   json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+During handling of the above exception, another exception occurred:
+backend/tests/test_phase2_merchant_loyalty.py:193: in test_paused_deal_excluded_from_public
+    public = requests.get(f"{API}/deals").json()
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/models.py:1120: in json
+    raise RequestsJSONDecodeError(e.msg, e.doc, e.pos)
+E   requests.exceptions.JSONDecodeError: Expecting value: line 1 column 1 (char 0)</failure></testcase><testcase classname="tests.test_phase2_merchant_loyalty.TestRedemptionAndLoyalty" name="test_full_referral_redemption_flow" time="2.765"><failure message="assert 404 == 200&#10; +  where 404 = &lt;Response [404]&gt;.status_code">backend/tests/test_phase2_merchant_loyalty.py:240: in test_full_referral_redemption_flow
+    assert v2.status_code == 200
+E   assert 404 == 200
+E    +  where 404 = &lt;Response [404]&gt;.status_code</failure></testcase><testcase classname="tests.test_phase2_merchant_loyalty.TestAnalytics" name="test_analytics_summary_shape" time="0.896" /><testcase classname="tests.test_phase2_merchant_loyalty.TestPromoCodes" name="test_promo_create_and_list" time="0.838" /><testcase classname="tests.test_phase2_merchant_loyalty.TestSampleVideos" name="test_sample_videos" time="0.099" /><testcase classname="tests.test_phase2_merchant_loyalty.TestChat" name="test_chat_end_to_end" time="1.560" /><testcase classname="tests.test_phase2_merchant_loyalty.TestRedemptionAndLoyalty" name="test_redeem_non_referred_awards_25" time="1.304" /><testcase classname="tests.test_phase2_merchant_loyalty.TestRedemptionAndLoyalty" name="test_void_claim_restores_quantity" time="1.531" /></testsuite></testsuites>

@@ -18,6 +18,7 @@ export default function SignUp() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [referralCode, setReferralCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +34,7 @@ export default function SignUp() {
     setLoading(true);
     setError(null);
     try {
-      await signUp(email.trim(), password, name.trim());
+      await signUp(email.trim(), password, name.trim(), referralCode.trim() || undefined);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       if (params.returnTo) router.replace(params.returnTo as any);
       else router.back();
@@ -107,6 +108,18 @@ export default function SignUp() {
               placeholder="At least 6 characters"
               placeholderTextColor={colors.muted}
               secureTextEntry
+              style={styles.input}
+            />
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Referral code (optional)</Text>
+            <TextInput
+              testID="signup-referral"
+              value={referralCode}
+              onChangeText={(t) => setReferralCode(t.toUpperCase())}
+              placeholder="HH123ABC"
+              placeholderTextColor={colors.muted}
+              autoCapitalize="characters"
               style={styles.input}
             />
           </View>

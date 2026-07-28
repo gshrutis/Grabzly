@@ -5,12 +5,18 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "frontend",
+    "scheme": "happyhour",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.localdealsnow.iyks42"
+      "bundleIdentifier": "com.emergent.localdealsnow.iyks42",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Scan customer QR codes and record promo videos",
+        "NSMicrophoneUsageDescription": "Record audio for your promo videos",
+        "NSPhotoLibraryUsageDescription": "Upload store photos and promo videos",
+        "NSLocationWhenInUseUsageDescription": "Show you deals from nearby merchants"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +24,15 @@
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.emergent.localdealsnow.iyks42"
+      "package": "com.emergent.localdealsnow.iyks42",
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -36,7 +50,22 @@
           "backgroundColor": "#000000"
         }
       ],
-      "expo-video"
+      "expo-video",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Scan customer QR codes and record promo videos.",
+          "microphonePermission": "Record audio for your promo videos.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Upload store photos and promo videos.",
+          "cameraPermission": "Record promo videos from your store."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

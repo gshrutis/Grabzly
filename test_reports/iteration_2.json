@@ -1,0 +1,49 @@
+{
+  "summary": "Phase 2 backend-only testing for HappyHour merchant panel + loyalty + referrals + chat + promo + sample-videos + regression. Wrote pytest suite at /app/backend/tests/test_phase2_merchant_loyalty.py (25 tests) targeting the public URL. Result: 22/25 passed (88%). Two REAL backend bugs found: (1) GET /api/deals returns HTTP 500 whenever any deal has discount_pct=None (unary minus on None at server.py:650 & 661). (2) POST /api/merchant/redeem/validate returns 404 when given the full 'HH:<claim_id>:<code>' QR payload because the handler .upper()'s the entire string including the UUID claim_id (server.py:856), so DB lookup by id fails. Raw 6-char code validation works fine. All other Phase 2 endpoints (merchant onboard/role elevation, deal CRUD/end/duplicate/delete, quantity delta, merchant/claims + status filter, redeem awards 25 base pts, referee first-redemption bonus of 100 + referrer bonus of 200, void restores flash quantity, analytics summary shape with 7-day daily + 7x24 heatmap + benchmark, promo-codes CRUD, sample-videos, chat send/thread/merchant threads, Phase 1 regression) pass.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/deals (default sort branch)", "issue": "HTTP 500 TypeError: bad operand type for unary -: 'NoneType' at server.py:650 and 661. Cause: `-d.get('discount_pct', 0)` returns None when the field exists with value None (which happens for any deal created via POST /api/merchant/deals when before_price is not supplied and discount_pct is not sent). Repro: onboard merchant → POST /api/merchant/deals {title,category,deal_type:'regular',after_price:5.0} (no before_price) → GET /api/deals crashes. Fix: use `-(d.get('discount_pct') or 0)` or default the field to 0 at creation.", "priority": "CRITICAL"},
+      {"endpoint": "POST /api/merchant/redeem/validate", "issue": "Returns 404 when passed the full QR payload 'HH:<claim_id>:<code>'. Root cause: server.py:856 does `code = body.code.strip().upper()` before splitting — this uppercases the UUID claim_id part, so `db.claims.find_one({id: parts[1]})` never matches. Raw 6-char code works because it's already alphanumeric. Fix: only uppercase after splitting, e.g. `raw = body.code.strip(); if raw.startswith('HH:'): parts = raw.split(':'); claim_id = parts[1]; code = parts[2].upper()` (do NOT upper the id).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/auth/register (referral)", "issue": "When body.referral_code matches an existing referrer, the referee document stores `pending_signup_bonus = 100` but this field is never read/awarded anywhere; the actual +100 referee bonus is granted at first redemption inside /merchant/redeem using the constant REFERRAL_REFEREE_REWARD. Consider removing the dead field or wiring it up (server.py:271, 918)."},
+      {"endpoint": "POST /api/merchant/onboard", "issue": "Auto-verifies every merchant (verification_status='verified'). Fine for demo, but flagged so main agent is aware the docs/analytics assume no manual review step."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase2_merchant_loyalty.py",
+    "/app/backend/tests/test_happyhour_api.py",
+    "/app/test_reports/pytest/iteration_2.xml"
+  ],
+  "action_items": [
+    "Fix server.py:650 and 661 — replace `-d.get('discount_pct', 0)` with `-(d.get('discount_pct') or 0)` (or default discount_pct to 0 on insert in POST /api/merchant/deals). This blocks the entire public deals feed as soon as any merchant-created deal is added without a discount value.",
+    "Fix server.py:850-870 — do NOT uppercase the full incoming code when it's a QR payload. Only uppercase the 6-char `parts[2]` code segment; the claim_id UUID must remain lowercase to match the DB.",
+    "(Optional) Remove or wire up `pending_signup_bonus` on user document; currently orphaned.",
+    "(Optional, carried from iter 1) Migrate @app.on_event startup/shutdown to FastAPI lifespan handler."
+  ],
+  "critical_code_review_comments": [
+    "server.py has grown to 1448 lines — well past the 700-line guideline. Split into routers/auth.py, routers/merchants.py, routers/deals.py, routers/claims.py, routers/analytics.py, routers/chat.py, seed.py.",
+    "Referral logic in /merchant/redeem relies on count_documents including the just-updated claim (prior==1 means this claim is the first). Works because update_one is awaited before the count, but this is subtle — a comment explaining the invariant would help.",
+    "MerchantOnboardIn.category is str, not restricted to the known CATEGORY ids. A client can create a merchant with an unknown category; consider validating.",
+    "Deal creation lacks server-side validation that `after_price <= before_price` and `discount_pct in [0,100]`.",
+    "Random.random() heatmap and video watch-through are recomputed on every /merchant/analytics/summary call — values jump each refresh which will look odd in the UI. Consider seeding once per merchant per day.",
+    "/merchant/redeem does not validate that the claim belongs to the requesting merchant before the status check — it does check (line 890) — OK, verified."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase2_merchant_loyalty.py (new)",
+    "/app/test_reports/iteration_2.json (new)",
+    "/app/test_reports/pytest/iteration_2.xml (new)"
+  ],
+  "success_rate": {"backend": "88% (22/25) — 3 failures caused by 2 real backend bugs", "frontend": "not tested (backend-only per request)"},
+  "seed_data_creation": "None manual. Each test run creates ephemeral users, merchants, deals, claims, promo codes and chat messages via the API. Emails prefixed 'test_' and titles prefixed 'TEST' for identification. No cleanup performed (isolated per-uuid).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend test suite is now split into iteration_1 (Phase 1 regression, 26 tests) and iteration_2 (Phase 2, 25 tests). Both live under /app/backend/tests/ and can be run with pytest. After main agent fixes the two flagged bugs (discount_pct None crash + QR payload upper() bug), re-run only test_phase2_merchant_loyalty.py::TestMerchantDeals::test_delete_soft_deletes, ::test_paused_deal_excluded_from_public, and ::TestRedemptionAndLoyalty::test_full_referral_redemption_flow to verify. Then run the full suite for regression.",
+  "rca_of_issue": "Bug 1 (deals feed 500): `dict.get(key, default)` only returns default when the key is *missing*. Newly-created deals persist `discount_pct: None` explicitly (server.py:491, 493, 494 etc.), so `.get('discount_pct', 0)` returns None, and `-None` throws TypeError. All requests to /api/deals crash the moment a merchant creates a no-discount deal. Fix: `-(d.get('discount_pct') or 0)`.\n\nBug 2 (QR payload validation 404): server.py:856 uppercases the whole payload before splitting. QR payload = 'HH:<uuid>:<code>'. Uppercased uuid never matches the DB record whose id is stored lowercase, so find_one returns None → 404. Fix: split first, only uppercase the 6-char code portion, keep claim_id as-is."
+}

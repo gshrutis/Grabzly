@@ -15,7 +15,7 @@ type AuthContextValue = {
   token: string | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, name: string) => Promise<void>;
+  signUp: (email: string, password: string, name: string, referral_code?: string) => Promise<void>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
 };
@@ -51,8 +51,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(res.user);
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string, name: string) => {
-    const res = await api.register(email, password, name);
+  const signUp = useCallback(async (email: string, password: string, name: string, referral_code?: string) => {
+    const res = await api.register(email, password, name, referral_code);
     await storage.secureSet(TOKEN_KEY, res.access_token);
     setToken(res.access_token);
     setUser(res.user);

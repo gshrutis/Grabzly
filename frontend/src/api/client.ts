@@ -42,10 +42,10 @@ async function request<T = any>(
 
 export const api = {
   // Auth
-  register: (email: string, password: string, name: string) =>
+  register: (email: string, password: string, name: string, referral_code?: string) =>
     request<{ access_token: string; user: any }>("/auth/register", {
       method: "POST",
-      body: { email, password, name },
+      body: { email, password, name, referral_code },
     }),
   login: (email: string, password: string) =>
     request<{ access_token: string; user: any }>("/auth/login", {
@@ -56,10 +56,11 @@ export const api = {
   updateMe: (patch: { name?: string; preferred_categories?: string[] }) =>
     request("/auth/me", { method: "PATCH", body: patch, auth: true }),
 
-  // Categories
+  // Categories & sample videos
   categories: () => request<any[]>("/categories"),
+  sampleVideos: () => request<any[]>("/sample-videos"),
 
-  // Merchants
+  // Merchants (public)
   listMerchants: (query?: { lat?: number; lng?: number; category?: string; q?: string }) =>
     request<any[]>("/merchants", { query }),
   getMerchant: (id: string, query?: { lat?: number; lng?: number }) =>
@@ -70,7 +71,7 @@ export const api = {
       auth: true,
     }),
 
-  // Deals
+  // Deals (public)
   listDeals: (query?: {
     lat?: number; lng?: number; category?: string; deal_type?: string;
     live_now?: boolean; q?: string; max_km?: number; sort?: string;
@@ -83,13 +84,57 @@ export const api = {
   claimDeal: (id: string) =>
     request<any>(`/deals/${id}/claim`, { method: "POST", auth: true }),
 
-  // Claims
+  // Claims (customer)
   myClaims: (status?: string) =>
     request<any[]>("/claims/me", { auth: true, query: status ? { status } : undefined }),
   getClaim: (id: string) => request<any>(`/claims/${id}`, { auth: true }),
   cancelClaim: (id: string) =>
     request<any>(`/claims/${id}/cancel`, { method: "POST", auth: true }),
 
-  // Seed (idempotent)
-  seed: () => request("/seed", { method: "POST" }),
+  // Merchant onboarding & profile
+  merchantOnboard: (body: any) =>
+    request<any>("/merchant/onboard", { method: "POST", body, auth: true }),
+  merchantMe: () => request<any>("/merchant/me", { auth: true }),
+  merchantUpdate: (patch: any) =>
+    request<any>("/merchant/me", { method: "PATCH", body: patch, auth: true }),
+
+  // Merchant deals
+  merchantDeals: (include_drafts = true) =>
+    request<any[]>("/merchant/deals", { auth: true, query: { include_drafts } }),
+  merchantCreateDeal: (body: any) =>
+    request<any>("/merchant/deals", { method: "POST", body, auth: true }),
+  merchantPatchDeal: (id: string, patch: any) =>
+    request<any>(`/merchant/deals/${id}`, { method: "PATCH", body: patch, auth: true }),
+  merchantEndDeal: (id: string) =>
+    request<any>(`/merchant/deals/${id}/end`, { method: "POST", auth: true }),
+  merchantDuplicateDeal: (id: string) =>
+    request<any>(`/merchant/deals/${id}/duplicate`, { method: "POST", auth: true }),
+  merchantDeleteDeal: (id: string) =>
+    request<any>(`/merchant/deals/${id}`, { method: "DELETE", auth: true }),
+
+  // Merchant redemption
+  merchantClaims: (status?: string) =>
+    request<any[]>("/merchant/claims", { auth: true, query: status ? { status } : undefined }),
+  merchantValidateCode: (code: string) =>
+    request<any>("/merchant/redeem/validate", { method: "POST", body: { code }, auth: true }),
+  merchantRedeem: (claim_id: string) =>
+    request<any>("/merchant/redeem", { method: "POST", body: { claim_id }, auth: true }),
+  merchantVoidClaim: (claim_id: string, reason: string) =>
+    request<any>(`/merchant/claims/${claim_id}/void`, { method: "POST", body: { reason }, auth: true }),
+
+  // Merchant analytics
+  merchantAnalytics: () => request<any>("/merchant/analytics/summary", { auth: true }),
+
+  // Merchant promos & chat
+  merchantPromos: () => request<any[]>("/merchant/promo-codes", { auth: true }),
+  merchantCreatePromo: (body: any) =>
+    request<any>("/merchant/promo-codes", { method: "POST", body, auth: true }),
+  merchantThreads: () => request<any[]>("/merchant/chat/threads", { auth: true }),
+  chatSend: (merchant_id: string, text: string) =>
+    request<any>("/chat/send", { method: "POST", body: { merchant_id, text }, auth: true }),
+  chatThread: (merchant_id: string) =>
+    request<any[]>(`/chat/thread/${merchant_id}`, { auth: true }),
+
+  // Loyalty
+  loyalty: () => request<any>("/loyalty/me", { auth: true }),
 };

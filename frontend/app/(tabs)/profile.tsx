@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, ActivityIndicator, Share, Platform,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
+import * as Clipboard from "expo-clipboard";
 import { useAuth } from "@/src/context/auth";
 import { useLocation } from "@/src/context/location";
 import { api } from "@/src/api/client";
@@ -23,6 +25,8 @@ export default function Profile() {
   const [notifFollowed, setNotifFollowed] = useState(true);
   const [quietHours, setQuietHours] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loyalty, setLoyalty] = useState<any | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -33,6 +37,16 @@ export default function Profile() {
     })();
     if (user?.preferred_categories) setPreferred(new Set(user.preferred_categories));
   }, [user]);
+
+  const loadLoyalty = useCallback(async () => {
+    if (!user) return;
+    try {
+      const l = await api.loyalty();
+      setLoyalty(l);
+    } catch {}
+  }, [user]);
+
+  useFocusEffect(useCallback(() => { loadLoyalty(); }, [loadLoyalty]));
 
   const toggleCat = async (id: string) => {
     Haptics.selectionAsync().catch(() => {});
@@ -50,6 +64,28 @@ export default function Profile() {
     }
   };
 
+  const shareReferral = async () => {
+    if (!user?.referral_code) return;
+    const message = `Come get local deals with me on HappyHour! Use my code ${user.referral_code} when you sign up — we both get points on your first redemption. happyhour://join?ref=${user.referral_code}`;
+    try {
+      if (Platform.OS === "web") {
+        await Clipboard.setStringAsync(message);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } else {
+        await Share.share({ message });
+      }
+    } catch {}
+  };
+
+  const copyCode = async () => {
+    if (!user?.referral_code) return;
+    await Clipboard.setStringAsync(user.referral_code);
+    setCopied(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <ScrollView
       style={styles.container}
@@ -64,6 +100,12 @@ export default function Profile() {
           <>
             <Text style={styles.name} testID="profile-name">{user.name}</Text>
             <Text style={styles.email}>{user.email}</Text>
+            {user.role === "merchant" && (
+              <View style={styles.roleBadge}>
+                <Ionicons name="storefront" size={12} color={colors.white} />
+                <Text style={styles.roleBadgeText}>MERCHANT</Text>
+              </View>
+            )}
           </>
         ) : (
           <>
@@ -91,6 +133,68 @@ export default function Profile() {
         )}
       </View>
 
+      {/* LOYALTY */}
+      {user && (
+        <View style={styles.section}>
+          <View style={styles.loyaltyCard}>
+            <LinearGradient
+              colors={[colors.brand, "#FF8A66"]}
+              style={StyleSheet.absoluteFillObject}
+            />
+            <View style={styles.loyaltyContent}>
+              <View style={styles.loyaltyTop}>
+                <View>
+                  <Text style={styles.loyaltyLabel}>Points balance</Text>
+                  <Text style={styles.loyaltyValue} testID="points-balance">{loyalty?.points ?? user.points ?? 0}</Text>
+                </View>
+                <Ionicons name="ribbon" size={40} color="rgba(255,255,255,0.35)" />
+              </View>
+              <Text style={styles.loyaltyHint}>Earn 25 pts per redemption. Redeem for early access & bonus discounts.</Text>
+            </View>
+          </View>
+
+          {/* Referral */}
+          <View style={styles.referCard}>
+            <View style={styles.referHeader}>
+              <Ionicons name="gift" size={18} color={colors.brand} />
+              <Text style={styles.referTitle}>Invite friends, both earn</Text>
+            </View>
+            <Text style={styles.referSub}>You get 200 pts. They get 100 pts on their first redemption.</Text>
+            <View style={styles.referCodeRow}>
+              <TouchableOpacity onPress={copyCode} testID="referral-copy" activeOpacity={0.85} style={styles.referCodeBox}>
+                <Text style={styles.referCode}>{user.referral_code}</Text>
+                <Ionicons name={copied ? "checkmark" : "copy"} size={16} color={copied ? colors.success : colors.brand} />
+              </TouchableOpacity>
+              <TouchableOpacity testID="referral-share" style={styles.shareBtn} onPress={shareReferral} activeOpacity={0.85}>
+                <Ionicons name="share-social" size={16} color={colors.white} />
+                <Text style={styles.shareBtnText}>Share</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Merchant CTA */}
+          <TouchableOpacity
+            testID="become-merchant-btn"
+            style={styles.merchantCta}
+            onPress={() => router.push(user.role === "merchant" ? "/merchant" : "/merchant/onboarding")}
+            activeOpacity={0.9}
+          >
+            <View style={styles.merchantCtaIcon}>
+              <Ionicons name="storefront" size={22} color={colors.white} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.merchantCtaTitle}>
+                {user.role === "merchant" ? "Open your merchant panel" : "Become a merchant"}
+              </Text>
+              <Text style={styles.merchantCtaSub}>
+                {user.role === "merchant" ? "Manage deals, scan QRs, view insights." : "Post your first deal in under 3 minutes."}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* LOCATION */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Location</Text>
@@ -117,7 +221,10 @@ export default function Profile() {
 
       {/* PREFERRED CATEGORIES */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Preferred categories {saving && <ActivityIndicator size="small" color={colors.brand} />}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Text style={styles.sectionTitle}>Preferred categories</Text>
+          {saving && <ActivityIndicator size="small" color={colors.brand} />}
+        </View>
         <View style={styles.catGrid}>
           {cats.map((c) => {
             const meta = CATEGORY_META[c.id] || { color: colors.brand, icon: "pricetag" };
@@ -178,6 +285,33 @@ export default function Profile() {
         </View>
       </View>
 
+      {/* Points ledger */}
+      {loyalty?.ledger?.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Points activity</Text>
+          <View style={styles.card}>
+            {loyalty.ledger.slice(0, 8).map((entry: any) => (
+              <View key={entry.id} style={styles.ledgerRow}>
+                <View style={[styles.ledgerIcon, { backgroundColor: entry.delta > 0 ? "#D1F5E0" : colors.surfaceTertiary }]}>
+                  <Ionicons
+                    name={entry.delta > 0 ? "add" : "remove"}
+                    size={14}
+                    color={entry.delta > 0 ? colors.success : colors.muted}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.ledgerReason}>{humanReason(entry.reason)}</Text>
+                  <Text style={styles.ledgerTime}>{new Date(entry.created_at).toLocaleString()}</Text>
+                </View>
+                <Text style={[styles.ledgerAmount, { color: entry.delta > 0 ? colors.success : colors.muted }]}>
+                  {entry.delta > 0 ? "+" : ""}{entry.delta}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
       {user && (
         <View style={styles.section}>
           <TouchableOpacity
@@ -195,6 +329,13 @@ export default function Profile() {
       <Text style={styles.footer}>HappyHour · v1.0</Text>
     </ScrollView>
   );
+}
+
+function humanReason(r: string): string {
+  if (r === "redemption") return "Deal redemption reward";
+  if (r === "redemption_and_referral") return "Redemption + first-claim bonus";
+  if (r === "referral_referrer") return "Friend redeemed their first claim";
+  return r;
 }
 
 const styles = StyleSheet.create({
@@ -216,6 +357,16 @@ const styles = StyleSheet.create({
   },
   name: { fontSize: 20, fontWeight: "800", color: colors.onSurface },
   email: { fontSize: 13, color: colors.muted, marginTop: 4, textAlign: "center" },
+  roleBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: spacing.sm,
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.info,
+  },
+  roleBadgeText: { color: colors.white, fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
   authRow: { flexDirection: "row", gap: 8, marginTop: spacing.lg },
   authBtn: {
     paddingHorizontal: 20, height: 42,
@@ -233,8 +384,71 @@ const styles = StyleSheet.create({
   section: { padding: spacing.lg, gap: spacing.md },
   sectionTitle: {
     fontSize: 16, fontWeight: "800", color: colors.onSurface,
-    flexDirection: "row", alignItems: "center", gap: 8,
   },
+
+  loyaltyCard: {
+    borderRadius: radius.lg,
+    overflow: "hidden",
+    ...shadow.cardStrong,
+  },
+  loyaltyContent: { padding: spacing.lg },
+  loyaltyTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  loyaltyLabel: { color: "rgba(255,255,255,0.85)", fontSize: 12, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase" },
+  loyaltyValue: { color: colors.white, fontSize: 36, fontWeight: "800", marginTop: 4 },
+  loyaltyHint: { color: "rgba(255,255,255,0.9)", fontSize: 12, marginTop: spacing.sm, fontWeight: "600" },
+
+  referCard: {
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceSecondary,
+    gap: spacing.sm,
+    ...shadow.card,
+  },
+  referHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  referTitle: { fontSize: 14, fontWeight: "800", color: colors.onSurface },
+  referSub: { fontSize: 12, color: colors.muted },
+  referCodeRow: { flexDirection: "row", gap: 8, marginTop: 6 },
+  referCodeBox: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: spacing.md,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.brandTertiary,
+    borderWidth: 1.5, borderColor: colors.brand,
+    borderStyle: "dashed",
+  },
+  referCode: { color: colors.brand, fontSize: 14, fontWeight: "800", letterSpacing: 2 },
+  shareBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 16, height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.brand,
+  },
+  shareBtnText: { color: colors.white, fontSize: 13, fontWeight: "800" },
+
+  merchantCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceSecondary,
+    ...shadow.card,
+  },
+  merchantCtaIcon: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: colors.brand,
+    alignItems: "center", justifyContent: "center",
+  },
+  merchantCtaTitle: { fontSize: 14, fontWeight: "800", color: colors.onSurface },
+  merchantCtaSub: { fontSize: 12, color: colors.muted, marginTop: 2 },
+
   card: {
     backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.lg,
@@ -242,17 +456,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     ...shadow.card,
   },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-  },
-  rowBetween: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: 6,
-  },
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  rowBetween: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: 6 },
   rowTitle: { fontSize: 14, fontWeight: "700", color: colors.onSurface },
   rowSubtitle: { fontSize: 12, color: colors.muted, marginTop: 2 },
   divider: { height: 1, backgroundColor: colors.divider, marginVertical: 4 },
@@ -266,18 +471,26 @@ const styles = StyleSheet.create({
   inlineBtnText: { color: colors.brand, fontSize: 13, fontWeight: "800" },
   catGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   catChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 12, paddingVertical: 8,
     borderRadius: radius.pill,
-    borderWidth: 1.5,
-    borderColor: colors.border,
+    borderWidth: 1.5, borderColor: colors.border,
     backgroundColor: colors.surfaceSecondary,
   },
   catChipText: { fontSize: 12, fontWeight: "700", color: colors.onSurface },
   hint: { fontSize: 12, color: colors.muted, fontStyle: "italic" },
+
+  ledgerRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingVertical: 6,
+  },
+  ledgerIcon: {
+    width: 32, height: 32, borderRadius: 16,
+    alignItems: "center", justifyContent: "center",
+  },
+  ledgerReason: { fontSize: 13, fontWeight: "700", color: colors.onSurface },
+  ledgerTime: { fontSize: 10, color: colors.muted, marginTop: 2, fontWeight: "600" },
+  ledgerAmount: { fontSize: 14, fontWeight: "800" },
 
   signOutBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
