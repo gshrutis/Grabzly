@@ -135,6 +135,15 @@ export default function OnboardingPriming() {
         >
           <Text style={styles.secondaryBtnText}>Browse without location</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          testID="onboarding-merchant-link"
+          style={styles.merchantLink}
+          onPress={() => router.push("/merchant")}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="storefront" size={14} color={colors.brand} />
+          <Text style={styles.merchantLinkText}>I&apos;m a merchant — sign in →</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -248,5 +257,15 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 14,
     fontWeight: "600",
+  },
+  merchantLink: {
+    marginTop: spacing.sm,
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+    height: 40,
+  },
+  merchantLinkText: {
+    color: colors.brand,
+    fontSize: 13,
+    fontWeight: "800",
   },
 });

@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 4 full-stack review of the merchant login fix. Backend: created /app/backend/tests/test_merchant_flow_iter4.py with 9 tests covering register -> /auth/me -> /merchant/me (pre-onboard) -> /merchant/onboard -> role-elevation -> /merchant/me (post-onboard) -> /auth/login as merchant -> customer account also hitting /merchant/me. All 9 PASS. Full Phase 2 regression (test_phase2_merchant_loyalty.py) still 25/25 PASS — no backend regressions. One SEMANTIC DEVIATION from the review spec: server returns 403 'Merchant role required' (not 404) from GET /api/merchant/me for users who are not yet merchants — this is because /merchant/me is guarded by get_current_merchant which checks role BEFORE profile lookup (server.py:106-108, :427-431). The frontend swallows any error in a try/catch and still routes to /merchant/onboarding, so end-user flow is correct, but the request's '404 (no merchant profile)' expectation is not literally met by the API. Frontend (mobile viewport 375x667, real Expo web preview): every requested testID is present and functional — onboarding-merchant-link on /, merchant-signin-btn / merchant-signup-btn / back-to-customer-btn on /merchant, msignin-email/msignin-password/msignin-submit/msignin-to-customer/msignin-to-signup + 'MERCHANT PORTAL' pill on /merchant/sign-in, msignup-name/msignup-email/msignup-password/msignup-submit on /merchant/sign-up, and go-to-merchant-signin on the customer /sign-in screen. Live E2E confirmed: (a) merchant sign-up POSTs and lands on /merchant/onboarding (KYC wizard), (b) sign-in with a customer-only account lands on /merchant/onboarding, (c) sign-in with a fully-onboarded merchant account lands on the merchant dashboard at /merchant/(tabs) (Bella dashboard, 5 tabs visible). Deprecated React Native style prop warnings observed (shadow* -> boxShadow, props.pointerEvents -> style.pointerEvents) coming from src/theme's shadow tokens — non-blocking but worth cleaning up. No deprecated Expo packages detected (no expo-av / expo-barcode-scanner / expo-background-fetch in the merchant flow).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/merchant/me", "issue": "Returns 403 'Merchant role required' for a valid customer JWT that has NOT yet onboarded (spec asked for 404 'no merchant profile'). Root cause: get_current_merchant runs role check before profile lookup (server.py:106-108, :427-431). Frontend still works because /merchant/sign-in.tsx catches any error and routes to /merchant/onboarding. If the intent is 404-first semantics, drop the role guard here and 404 when the profile doesn't exist, or split into two dependencies (auth-required + optional-profile)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "merchant/sign-in", "issues": ["The 'Customer login' button is a rounded outlined pill immediately below the 'Sign in' primary CTA and just above the divider — it appears twice in the viewport (as msignin-to-customer AND after the divider). Consider consolidating to a single link to reduce visual repetition."]}
+    ],
+    "react_native_issues": [
+      {"component": "src/theme (shadow tokens)", "issue": "Runtime console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\"'. Emitted from shadow.card / shadow.cardStrong style objects consumed across merchant landing, sign-in, sign-up (and other) screens. Reference: /app/frontend/src/theme.ts (shadow tokens)."},
+      {"component": "expo-router / RN Web", "issue": "Runtime console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Not from merchant code directly — appears when navigating between merchant screens. Non-blocking."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_merchant_flow_iter4.py",
+    "/app/backend/tests/test_phase2_merchant_loyalty.py",
+    "/app/test_reports/pytest/iteration_4.xml"
+  ],
+  "action_items": [
+    "(Optional) Align /api/merchant/me behavior with spec — return 404 when the user is authenticated but has no merchant profile, regardless of role. Currently returns 403 for non-merchants. Frontend already handles both, so this is a semantics fix only.",
+    "(Cleanup) Migrate src/theme shadow.* tokens from RN 'shadowColor/Offset/Opacity/Radius' props to the new 'boxShadow' style prop to silence deprecation warnings on RN Web / newer RN.",
+    "(Nice-to-have) On /merchant/sign-in the 'Customer login' button appears both as the msignin-to-customer link and via the divider block below — consider removing one of them for a cleaner layout."
+  ],
+  "critical_code_review_comments": [
+    "MerchantOnboardIn requires 'name' + 'lat' + 'lng' + 'hours' — the field names ('name' not 'business_name', 'lat' not 'latitude') are consistent with the rest of the API; frontend onboarding form must match.",
+    "/merchant/index.tsx correctly guards on token+role and only auto-redirects when both are present; guest sees the marketing landing hero as required — good UX fix over the prior silent redirect.",
+    "/merchant/sign-in.tsx correctly checks api.merchantMe() after signIn and routes to /merchant/(tabs) on success, /merchant/onboarding otherwise — behavior confirmed end-to-end for both a full merchant and a bare customer account.",
+    "server.py is still 1449 lines (unchanged from iter3) — no new bloat introduced by this fix (fix is frontend-only)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_merchant_flow_iter4.py (new)",
+    "/app/test_reports/iteration_4.json (new)",
+    "/app/test_reports/pytest/iteration_4.xml (new)"
+  ],
+  "success_rate": {"backend": "100% — 9/9 new merchant-flow tests pass + 25/25 Phase 2 regression pass", "frontend": "100% of the 9 explicit acceptance criteria in the review request verified via Playwright mobile viewport, including live signup, customer-account merchant sign-in, and full-merchant sign-in to /merchant/(tabs)"},
+  "seed_data_creation": "None manual. Tests create ephemeral users prefixed 'test_merch_' / 'test_cust_' / 'test_mfull_' / 'test_mfront_' via public API. No teardown, but data is idempotent (unique UUIDs per run).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Merchant sign-in path is functional end-to-end. If the 403-vs-404 semantic on /api/merchant/me matters for a future spec, either relax the guard or split it into two dependencies. Rerun /app/backend/tests/test_merchant_flow_iter4.py + /app/backend/tests/test_phase2_merchant_loyalty.py — both green as of this iteration. Frontend E2E was verified against https://local-deals-now.preview.emergentagent.com/ at 375x667 viewport.",
+  "rca_of_issue": "Not applicable — this iteration was a feature-verification pass on E1's frontend-heavy fix for missing merchant login. Zero blocking bugs found. Only one non-blocking semantic discrepancy (403 vs 404 on /merchant/me for non-merchant users) documented in backend_issues.minor."
+}
