@@ -1,0 +1,196 @@
+{
+  "app_name": "HappyHour",
+  "personality": "4 Tactile / Playful LIGHT",
+  "personality_one_liner": "A vibrant, energetic, and touchable experience that makes deal-hunting feel like an exciting game.",
+  "color": {
+    "surface": { "light": "#FFFDFB", "dark": "#1C1716" },
+    "onSurface": { "light": "#2D2422", "dark": "#FFFDFB" },
+    "surfaceSecondary": { "light": "#FFFFFF", "dark": "#2A2321" },
+    "onSurfaceSecondary": { "light": "#2D2422", "dark": "#FFFDFB" },
+    "surfaceTertiary": { "light": "#F2EBE5", "dark": "#382F2C" },
+    "onSurfaceTertiary": { "light": "#544642", "dark": "#E3D5CD" },
+    "surfaceInverse": { "light": "#2D2422", "dark": "#FFFDFB" },
+    "onSurfaceInverse": { "light": "#FFFDFB", "dark": "#2D2422" },
+    "brand": { "light": "#FF5A36", "dark": "#FF5A36" },
+    "brandPrimary": { "light": "#FF5A36", "dark": "#FF7152" },
+    "onBrandPrimary": { "light": "#FFFFFF", "dark": "#FFFFFF" },
+    "brandSecondary": { "light": "#FFA98F", "dark": "#D63F1F" },
+    "onBrandSecondary": { "light": "#4A1204", "dark": "#FFD5CC" },
+    "brandTertiary": { "light": "#FFE3D9", "dark": "#5C1705" },
+    "onBrandTertiary": { "light": "#CC3714", "dark": "#FFB8A3" },
+    "success": { "light": "#05A660", "dark": "#12B76A" },
+    "onSuccess": { "light": "#FFFFFF", "dark": "#000000" },
+    "warning": { "light": "#E59200", "dark": "#F7B529" },
+    "onWarning": { "light": "#FFFFFF", "dark": "#000000" },
+    "error": { "light": "#E82C2C", "dark": "#F04444" },
+    "onError": { "light": "#FFFFFF", "dark": "#FFFFFF" },
+    "info": { "light": "#2BB8D6", "dark": "#35C5E3" },
+    "onInfo": { "light": "#FFFFFF", "dark": "#000000" },
+    "border": { "light": "#E8DFD8", "dark": "#3E3432" },
+    "borderStrong": { "light": "#D1C4BC", "dark": "#574A47" },
+    "divider": { "light": "#F2EBE5", "dark": "#382F2C" }
+  },
+  "typography": {
+    "displayFontFamily": "Figtree",
+    "textFontFamily": "Nunito",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Make the interface feel touchable with chunky cards and oversized tap areas. Use controlled asymmetry to create energy.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "2",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": "true",
+    "do's": [
+      "Use glass on Bottom tab bar when content scrolls behind it",
+      "Use glass on Sticky headers over scrolling content",
+      "Use glass on 'Live Now' floating tags over images"
+    ],
+    "dont's": [
+      "Never apply glass to every button, list rows, or chips"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Onboarding",
+      "purpose": "Prime location access and category preferences playfully",
+      "states": {
+        "loading": "Spinner centered",
+        "empty": "N/A",
+        "error": "Failed to get location alert"
+      },
+      "layout": "Full-bleed playful scenes with a large primary CTA fixed at the bottom. Use brand-tinted gradient backdrops."
+    },
+    {
+      "name": "Home",
+      "purpose": "Primary discovery hub combining Map, Feed, and Reels",
+      "states": {
+        "loading": "Skeleton cards with pulsating effect",
+        "empty": "Playful illustration saying no deals nearby",
+        "error": "Error loading deals with retry button"
+      },
+      "layout": "Top search bar with category shortcuts (pills) underneath. Segmented control to switch between Map, Feed, Reels. Feed: Deals carousel with countdown timers and bold percent-off badges. Use chunky cards with image scrims for text readability."
+    },
+    {
+      "name": "Deal Detail",
+      "purpose": "Showcase specific deal, urgency, and trigger the claim action",
+      "states": {
+        "loading": "Centered spinner",
+        "empty": "Deal expired or unavailable",
+        "error": "Error fetching deal details"
+      },
+      "layout": "Hero image with top-to-bottom gradient scrim. Embedded video placeholder if applicable. Large price before/after, prominent countdown timer. Sticky 'Claim Deal' CTA pinned at the bottom above safe area."
+    },
+    {
+      "name": "Store Profile",
+      "purpose": "Showcase merchant details, location, and all active deals",
+      "states": {
+        "loading": "Skeleton layout for cover and deals",
+        "empty": "No active deals for this store",
+        "error": "Failed to load store profile"
+      },
+      "layout": "Cover image with glass header overlay. Store details section below. Follow button. List of 'Active Deals' as chunky cards."
+    },
+    {
+      "name": "Claim Flow",
+      "purpose": "Generate QR code upon deal claim",
+      "states": {
+        "loading": "Processing claim...",
+        "empty": "N/A",
+        "error": "Claim failed due to limit reached"
+      },
+      "layout": "Modal or bottom sheet. Success animation followed by a large QR code and a redemption code below it. Clear instructions on how to use it at the store."
+    },
+    {
+      "name": "My Claims",
+      "purpose": "Track claimed deals status (Active / Redeemed / Expired)",
+      "states": {
+        "loading": "Skeleton list",
+        "empty": "Illustration showing no claims yet, prompt to discover deals",
+        "error": "Failed to load claims"
+      },
+      "layout": "Top tabs for Active/Redeemed/Expired. List of claimed deals using surfaceSecondary cards. Each card has a status badge."
+    },
+    {
+      "name": "Favorites",
+      "purpose": "List of followed merchants",
+      "states": {
+        "loading": "Skeleton list",
+        "empty": "Empty state illustration with text 'You haven't followed any merchants yet'",
+        "error": "Failed to load favorites"
+      },
+      "layout": "Grid or list of followed store profiles. Each card has the store cover and logo."
+    }
+  ],
+  "images": {
+    "onboarding_scene": {
+      "url": "https://images.unsplash.com/photo-1723744909898-4a1ce8922699?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2OTV8MHwxfHNlYXJjaHwzfHxoYXBweSUyMGhvdXIlMjBkcmlua3MlMjBmb29kfGVufDB8fHx8MTc4MjA1Nzc5MXww&ixlib=rb-4.1.0&q=85",
+      "dark": "https://images.unsplash.com/photo-1532634922-8fe0b757fb13?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2OTV8MHwxfHNlYXJjaHwxfHxoYXBweSUyMGhvdXIlMjBkcmlua3MlMjBmb29kfGVufDB8fHx8MTc4MjA1Nzc5MXww&ixlib=rb-4.1.0&q=85",
+      "alt": "People enjoying food and drinks at happy hour"
+    },
+    "deal_food": {
+      "url": "https://images.unsplash.com/photo-1723744909898-4a1ce8922699?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2OTV8MHwxfHNlYXJjaHwzfHxoYXBweSUyMGhvdXIlMjBkcmlua3MlMjBmb29kfGVufDB8fHx8MTc4MjA1Nzc5MXww&ixlib=rb-4.1.0&q=85",
+      "alt": "Delicious food deal"
+    },
+    "deal_clothing": {
+      "url": "https://images.pexels.com/photos/18699670/pexels-photo-18699670.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "Stylish clothing retail rack"
+    },
+    "deal_grocery": {
+      "url": "https://images.unsplash.com/photo-1542838132-92c53300491e",
+      "alt": "Fresh groceries and vegetables"
+    },
+    "reels_video_placeholder": {
+      "url": "https://images.pexels.com/photos/13929970/pexels-photo-13929970.jpeg",
+      "alt": "Vertical video creator holding phone"
+    },
+    "empty_state_claims": {
+      "url": "https://images.pexels.com/photos/8833419/pexels-photo-8833419.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "Empty state hand with phone"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Follow 4 Tactile / Playful LIGHT personality strictly. Use chunky cards, rounded containers, and oversized tap areas.",
+    "Implement the gradient scrim (transparent to surfaceInverse) pattern on ALL hero images or deal cards where text overlays imagery.",
+    "Use Phosphor filled icons exclusively.",
+    "Primary CTAs ('Claim Deal', 'Continue') MUST be sticky at the bottom of the screen, floating above the scrolling content with safe-area clearance.",
+    "Ensure 'Live Now' countdown badges use a strong accent color (like warning or error) to convey urgency, paired with playful animation like a slight pulse if possible.",
+    "For the Feed vs Map vs Reels toggle on the Home screen, use a stylized segmented control or pill chips.",
+    "Apply haptic feedback on tab changes, filter chip selections, and when claiming a deal (success haptic). Serialize these in the dev output.",
+    "Use expo-image for all images. Ensure empty states fill the screen and use the designated empty state illustration.",
+    "Ensure UI hierarchy is obvious without text overload. Use padding (md/lg) generously around content to prevent a cluttered dashboard look."
+  ]
+}
