@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 3 backend-only retest after main agent's fixes for the two iteration_2 bugs. Full Phase 2 suite (25 tests) now passes 25/25 (100%). Both target bugs are verified fixed: (1) GET /api/deals no longer 500s when deals have discount_pct=None — confirmed via TestMerchantDeals::test_delete_soft_deletes and test_paused_deal_excluded_from_public (both create a regular deal without before_price, so discount_pct persists as None, then hit /api/deals successfully). Server fix at server.py:650, 654, 656, 659, 661 uses `-(d.get('discount_pct') or 0)`. (2) POST /api/merchant/redeem/validate now accepts the full mixed-case QR payload — confirmed via TestRedemptionAndLoyalty::test_full_referral_redemption_flow step 7 which passes `claim['qr_payload']` verbatim (contains lowercase UUID) and asserts 200 + same claim id. Server fix at server.py:856-864 splits first and only uppercases parts[2]. All other Phase 2 flows (referral redemption 25+100 base+referee bonus and 200 referrer bonus, void restores flash quantity, analytics summary, promo codes, sample videos, chat, merchant CRUD, quantity delta, duplicate/end/delete, and Phase 1 regression endpoints inside the Phase 2 file) also green. Additionally ran the older Phase 1 suite (test_happyhour_api.py, 26 tests): 22 pass, 4 fail — but all 4 failures are test-side stale-seed assumptions caused by DB pollution from Phase 2 test runs (hardcoded len==15 on merchants/deals, empty reels because Phase 2 pauses video deals, and a None-vs-None sort comparison inside the test itself) — NOT server bugs. Server responds 200 in every case.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "N/A (test-file only)", "issue": "test_happyhour_api.py hardcodes 'exactly 15 seeded merchants/deals' and 'reels non-empty'. Phase 2 tests write extra records into the same MongoDB, so these 4 assertions fail on re-run. Recommend main agent either (a) filter to non-TEST-prefixed rows, or (b) drop the exact-count assumption. Failures: test_merchants_seeded_and_sorted, test_deals_seeded_and_sorted, test_deals_sort_discount (does `sorted(pcts, reverse=True)` where pcts contain None), test_deals_reels. Server returned 200 in all four cases."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase2_merchant_loyalty.py",
+    "/app/backend/tests/test_happyhour_api.py",
+    "/app/test_reports/pytest/iteration_3.xml",
+    "/app/test_reports/pytest/iteration_3_phase1.xml"
+  ],
+  "action_items": [
+    "Both critical bugs from iteration_2 are FIXED and verified. No blocking issues remain for Phase 2.",
+    "(Optional) De-flake test_happyhour_api.py by filtering seeded records (e.g., merchant_id startswith 'seed_') or removing exact-count assertions — otherwise Phase 1 suite goes red as soon as Phase 2 suite runs on the same DB.",
+    "(Carried) server.py is 1449 lines — still worth splitting into routers/ modules.",
+    "(Carried) Consider defaulting `discount_pct=0` at deal insert time instead of None; would make the `or 0` guards unnecessary and simplify future sort/filter code."
+  ],
+  "critical_code_review_comments": [
+    "Fix for bug 1 is applied consistently across all 4 sort branches that touch discount_pct (server.py:650, 659, 661) and rating (:654) — good defensive coverage.",
+    "Fix for bug 2 correctly keeps the claim_id UUID in its original case while only uppercasing the 6-char code segment; malformed-payload guard `len(parts) < 3 -> 400` present.",
+    "No changes needed for the request; retest scope satisfied."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_3.json (new)",
+    "/app/test_reports/pytest/iteration_3.xml (new)",
+    "/app/test_reports/pytest/iteration_3_phase1.xml (new)"
+  ],
+  "success_rate": {"backend": "Phase 2: 100% (25/25). Phase 1 legacy suite: 85% (22/26) — 4 test-side stale-seed failures, no server-side regressions.", "frontend": "not tested (backend-only per request)"},
+  "seed_data_creation": "None manual. Each test creates ephemeral users/merchants/deals/claims/promos/chats via API with 'TEST' / 'test_' prefixes. No teardown, so the older test_happyhour_api.py exact-count assertions break after Phase 2 runs.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Both iteration_2 critical bugs are now fixed and all 25 Phase 2 tests pass. If the older test_happyhour_api.py suite is required to stay green on the same DB, it needs its exact-count assertions relaxed. Reruns should target /app/backend/tests/test_phase2_merchant_loyalty.py — 10-second run, uses EXPO_BACKEND_URL/api and pytest-xdist 2 workers.",
+  "rca_of_issue": "Both root causes from iteration_2 confirmed resolved by the applied patches. Bug 1: unary minus on None inside sort lambdas — fixed by `-(x or 0)`. Bug 2: uppercasing the entire QR payload before splitting corrupted the lowercase UUID claim_id — fixed by splitting first and only uppercasing the 6-char code segment (server.py:858-863)."
+}

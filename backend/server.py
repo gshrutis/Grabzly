@@ -647,18 +647,18 @@ async def list_deals(
     if sort == "distance" and lat is not None:
         deals.sort(key=lambda d: d.get("distance_km", 999))
     elif sort == "discount":
-        deals.sort(key=lambda d: -d.get("discount_pct", 0))
+        deals.sort(key=lambda d: -(d.get("discount_pct") or 0))
     elif sort == "expiring":
         deals.sort(key=lambda d: d.get("minutes_left", 99999))
     elif sort == "rating":
-        deals.sort(key=lambda d: -d.get("rating", 0))
+        deals.sort(key=lambda d: -(d.get("rating") or 0))
     elif sort == "price_low":
-        deals.sort(key=lambda d: d.get("after_price", 0))
+        deals.sort(key=lambda d: d.get("after_price") or 0)
     else:
         if lat is not None:
-            deals.sort(key=lambda d: (not d.get("is_live_now"), d.get("distance_km", 999), -d.get("discount_pct", 0)))
+            deals.sort(key=lambda d: (not d.get("is_live_now"), d.get("distance_km", 999), -(d.get("discount_pct") or 0)))
         else:
-            deals.sort(key=lambda d: (not d.get("is_live_now"), -d.get("discount_pct", 0)))
+            deals.sort(key=lambda d: (not d.get("is_live_now"), -(d.get("discount_pct") or 0)))
     return deals
 
 
@@ -853,17 +853,17 @@ async def merchant_validate(body: ValidateCodeIn, user=Depends(get_current_merch
     if not merchant:
         raise HTTPException(status_code=404, detail="Merchant profile not found")
 
-    code = body.code.strip().upper()
+    code = body.code.strip()
     # Accept either raw code or full QR payload "HH:<id>:<code>"
-    if code.startswith("HH:"):
+    if code.upper().startswith("HH:"):
         parts = code.split(":")
         if len(parts) < 3:
             raise HTTPException(status_code=400, detail="Malformed QR payload")
         claim_id = parts[1]
-        raw_code = parts[2]
+        raw_code = parts[2].upper()
         claim = await db.claims.find_one({"id": claim_id, "redemption_code": raw_code}, {"_id": 0})
     else:
-        claim = await db.claims.find_one({"redemption_code": code, "merchant_id": merchant["id"]}, {"_id": 0})
+        claim = await db.claims.find_one({"redemption_code": code.upper(), "merchant_id": merchant["id"]}, {"_id": 0})
 
     if not claim:
         raise HTTPException(status_code=404, detail="Code not found")
