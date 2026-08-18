@@ -1,0 +1,49 @@
+{
+  "summary": "Iteration 6 backend-only bug-fix verification for 'user-created merchant lost on signout + force reseed'. Created /app/backend/tests/test_signout_reseed_persistence.py with a full 10-step E2E scenario + two regression assertions (exact counts + no accumulation across repeated reseeds). All 3 new tests PASS (3/3). Ran the requested regression suites — Phase 2 merchant + loyalty (25 tests) and iter5 reset-password + category filter (8 tests) + iter4 merchant flow (9 tests): 42/42 PASS. Combined iteration 6 result: 45/45 backend tests green. The fix in _do_seed() correctly (a) only deletes demo docs where owner_id == None, (b) only deletes deals whose merchant_id is in the demo-merchant set, (c) preserves user merchants + user deals across arbitrary numbers of force reseeds (verified with 3 back-to-back reseeds — demo merchant count stays at exactly 6, user merchant survives). After reseed, /merchant/me returns the same profile, /merchant/deals returns the user's deal, and /api/deals?category=cafe returns BOTH the user's cafe deal AND the freshly regenerated demo cafe deals from Brew House Coffee. Post-reseed the user is able to re-login with the same email/password and the JWT still resolves to a merchant role. No regressions detected in Phase 2, iter4, or iter5 suites.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/seed", "issue": "The endpoint is unauthenticated and force=true is publicly callable — anyone can trigger a demo re-seed (which is what the city-switcher relies on). Not a data-loss issue anymore after the fix, but consider gating with a shared token or rate-limiting so an attacker can't hammer it. Flagged for hardening, not blocking."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_signout_reseed_persistence.py",
+    "/app/backend/tests/test_phase2_merchant_loyalty.py",
+    "/app/backend/tests/test_reset_password_and_category.py",
+    "/app/backend/tests/test_merchant_flow_iter4.py",
+    "/app/test_reports/pytest/iteration_6_persistence.xml",
+    "/app/test_reports/pytest/iteration_6_regression.xml"
+  ],
+  "action_items": [
+    "(Optional hardening) Gate POST /api/seed?force=true behind an internal token or short-lived per-IP rate limit — currently anyone can trigger a demo reseed by hitting the public URL.",
+    "(Optional) The old /app/backend/tests/test_happyhour_api.py still has 4 pre-existing failing assertions that assume static seed counts and were flagged in iteration 5. Not iter6 regressions, but recommend deleting or rewriting to be count-tolerant when convenient."
+  ],
+  "critical_code_review_comments": [
+    "_do_seed() force branch now correctly scopes deletes: db.merchants.delete_many({owner_id: None}) and db.deals.delete_many({merchant_id: {$in: demo_ids}}). Confirmed by test that user merchants with owner_id set AND their deals (which carry that merchant_id but were NOT in demo_ids) both survive reseed.",
+    "Defensive insert_many guards (if merchants / if all_deals) prevent BulkWriteError on empty arrays — good.",
+    "Deals belonging to the user merchant are matched by merchant_id (not owner_id) for deletion, which is the correct approach: even if a user's deal had a NULL owner_id (edge case), it would still be preserved because its merchant_id is not in the demo set.",
+    "One theoretical edge: if a user creates a deal against a demo merchant's id (impossible via /merchant/deals since that endpoint always ties to the caller's merchant, but possible if someone injects), it would still be deleted. Not exploitable via public API surface today.",
+    "SIGNOUT itself was never the culprit — login/logout is stateless JWT with no server call. The report's RCA is accurate: the destructive path was force-reseed, and it is now surgically scoped."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_signout_reseed_persistence.py (new)",
+    "/app/test_reports/iteration_6.json (new)",
+    "/app/test_reports/pytest/iteration_6_persistence.xml (new)",
+    "/app/test_reports/pytest/iteration_6_regression.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% — 3/3 new persistence tests + 25/25 Phase 2 + 8/8 iter5 + 9/9 iter4 = 45/45 pass on iteration-6 scope.",
+    "frontend": "Not tested (review_request scoped to backend-only)."
+  },
+  "seed_data_creation": "Each test-run creates one ephemeral user (email prefix 'iter6_' + uuid) and one user-owned merchant (name 'Iter6 Persist Cafe <hex>') + one cafe deal. These accumulate in the DB (no server-side test teardown) but do not affect assertions because the tests key off exact ids the test itself created. Demo data is fully reset each test via force reseed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 6 fix verified: user merchants + deals survive force reseed. Full E2E is covered by /app/backend/tests/test_signout_reseed_persistence.py::TestMerchantSurvivesForceReseed::test_full_e2e_persistence. For future runs, keep this + the iter5 (reset-password/category) + Phase 2 + iter4 suites in the regression pipeline. Base URL comes from /app/frontend/.env EXPO_PUBLIC_BACKEND_URL. If iter6 test file is run in isolation, env var is auto-loaded from /app/frontend/.env by the module-level shim.",
+  "rca_of_issue": "RCA: Original _do_seed(force=True) called db.merchants.delete_many({}) and db.deals.delete_many({}), unconditionally wiping ALL merchants and ALL deals. The customer 'Change city' UI in /frontend calls POST /api/seed?force=true anonymously, so any city-switch would nuke every user-created merchant. Signout itself was never destructive (JWT client-only), but users perceived data loss after logout because the very next city switch (or admin action) wiped everything. FIX: filter delete_many to owner_id == None and scope the deals delete to merchant_ids of those demo merchants. VERIFICATION: E2E test creates a merchant + deal, force-reseeds with different lat/lng, re-logs in, and asserts merchant + deal still queryable. Also verified 3 repeated reseeds keep demo merchant count at exactly 6 (no duplication). REPRODUCTION (pre-fix): 1) register user, 2) onboard merchant, 3) POST /api/seed?force=true, 4) GET /api/merchant/me → 404. Post-fix: same flow returns 200 with the original merchant."
+}

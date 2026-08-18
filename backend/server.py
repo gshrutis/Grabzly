@@ -1393,12 +1393,18 @@ def _make_deals_for_merchant(merchant: dict) -> List[dict]:
 
 
 async def _do_seed(lat: float, lng: float, force: bool = False):
-    existing = await db.merchants.count_documents({})
-    if existing > 0 and not force:
-        return {"seeded": False, "message": "Already seeded", "merchants": existing}
+    """Idempotent demo seed. When force=True, only wipes and re-inserts *demo* data
+    (records with owner_id=None). User-created merchants and their deals are preserved."""
+    existing_demo = await db.merchants.count_documents({"owner_id": None})
+    if existing_demo > 0 and not force:
+        return {"seeded": False, "message": "Already seeded", "merchants": existing_demo}
     if force:
-        await db.merchants.delete_many({})
-        await db.deals.delete_many({})
+        # Find demo merchant ids so we can also drop their associated deals only
+        demo_merchants = await db.merchants.find({"owner_id": None}, {"_id": 0, "id": 1}).to_list(500)
+        demo_ids = [m["id"] for m in demo_merchants]
+        await db.merchants.delete_many({"owner_id": None})
+        if demo_ids:
+            await db.deals.delete_many({"merchant_id": {"$in": demo_ids}})
 
     merchants = []
     all_deals = []
@@ -1428,8 +1434,10 @@ async def _do_seed(lat: float, lng: float, force: bool = False):
         merchants.append(m)
         all_deals.extend(_make_deals_for_merchant(m))
 
-    await db.merchants.insert_many([{**m} for m in merchants])
-    await db.deals.insert_many([{**d} for d in all_deals])
+    if merchants:
+        await db.merchants.insert_many([{**m} for m in merchants])
+    if all_deals:
+        await db.deals.insert_many([{**d} for d in all_deals])
     return {"seeded": True, "merchants": len(merchants), "deals": len(all_deals)}
 
 
