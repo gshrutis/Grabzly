@@ -135,6 +135,15 @@ export default function MerchantSignIn() {
           </TouchableOpacity>
 
           <TouchableOpacity
+            testID="msignin-forgot"
+            onPress={() => router.push({ pathname: "/reset-password", params: { merchant: "1" } })}
+            activeOpacity={0.7}
+            style={{ alignItems: "center", padding: 8 }}
+          >
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             testID="msignin-to-signup"
             onPress={() => router.replace("/merchant/sign-up")}
             activeOpacity={0.7}
@@ -236,6 +245,7 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { color: colors.white, fontSize: 16, fontWeight: "800" },
   linkText: { color: colors.muted, fontSize: 14 },
+  forgotText: { color: colors.brand, fontSize: 13, fontWeight: "700" },
   divider: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginVertical: spacing.sm },
   dividerLine: { flex: 1, height: 1, backgroundColor: colors.divider },
   dividerText: { color: colors.muted, fontSize: 12, fontWeight: "700" },

@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/src/api/client";
 import { colors, radius, spacing, shadow } from "@/src/theme";
+import { formatMoney } from "@/src/utils/format";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -52,7 +53,7 @@ export default function MerchantAnalytics() {
         <StatCard label="Redemptions" value={data.totals.redemptions} icon="checkmark-circle" color={colors.success} />
         <StatCard label="No-shows" value={data.totals.no_shows} icon="close-circle" color={colors.muted} />
         <StatCard label="Redemption rate" value={`${data.totals.redemption_rate}%`} icon="trending-up" color={colors.brand} />
-        <StatCard label="Est. GMV" value={`$${data.totals.gmv.toFixed(0)}`} icon="cash" color={colors.success} />
+        <StatCard label="Est. GMV" value={formatMoney(data.totals.gmv, { withDecimals: false })} icon="cash" color={colors.success} />
       </View>
 
       {/* Daily chart */}

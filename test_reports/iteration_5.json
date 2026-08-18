@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 5 backend-only verification of the reset-password endpoint and category filter regression. Created /app/backend/tests/test_reset_password_and_category.py with 8 targeted tests — ALL 8 PASS: happy-path reset flips the login credential (old pw -> 401, new pw -> 200 with token+user), unknown email -> 404 'No account with that email', <6-char new_password -> 422 Pydantic validation, missing email -> 422. Category filter tests confirm GET /api/deals?category=cafe returns only cafe deals (0 leakage), same for food/bakery, and the unfiltered /api/deals returns multiple categories — this validates the iter5 bug where merchant-created deals used to default to 'food'. Ran the requested Phase 2 regression: test_phase2_merchant_loyalty.py = 25/25 PASS, test_merchant_flow_iter4.py = 9/9 PASS. So the two iteration-tracked backend regression suites are green (34/34 pass, plus 8/8 new = 42/42). The older test_happyhour_api.py (18 tests) had 4 pre-existing failures that are NOT iteration 5 regressions — they assume a static seed count (6 merchants / 15 deals) but the DB now has 43 deals / 41 merchants due to previous iterations' onboarding tests (TEST_ prefixed data). One of those (test_deals_reels expects >0 reels) exposes a real but pre-existing product observation: /api/deals/reels returns [] because the 5 deals that have a video_url are all expired (the seed's video deals have finite windows). No iteration-5 change caused this; flagged as informational.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/deals/reels", "issue": "Currently returns [] on the live preview: there are 5 deals with video_url in the DB, but all are past their end_at, so _enrich_deals marks them expired and the endpoint filters them out. Not caused by iteration 5, but worth revisiting seed data or reels TTL so the reels tab is not empty for new users."},
+      {"endpoint": "N/A", "issue": "Stale assertions in /app/backend/tests/test_happyhour_api.py: test_merchants_seeded_and_sorted expects exactly 6 merchants, test_deals_seeded_and_sorted expects exactly 15 deals, test_deals_sort_discount fails on None discounts due to typed sorting, test_deals_reels expects >0. These are test-fixture staleness, not iteration-5 regressions. Recommend either: (a) delete/rewrite this file to be count-tolerant, or (b) exclude TEST_ prefixed data before counting."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_reset_password_and_category.py",
+    "/app/backend/tests/test_phase2_merchant_loyalty.py",
+    "/app/backend/tests/test_merchant_flow_iter4.py",
+    "/app/test_reports/pytest/iteration_5_new.xml",
+    "/app/test_reports/pytest/iteration_5_regression.xml"
+  ],
+  "action_items": [
+    "(Optional) Refresh test_happyhour_api.py so its assertions are count-tolerant (e.g., >=6 merchants, >=15 deals, ignore TEST_ prefixed docs). This will clear 3 pre-existing false positives.",
+    "(Product) /api/deals/reels currently returns empty on the live preview because all seeded video-bearing deals are past end_at. Consider (a) auto-extending seed video deal end_at, (b) re-seeding video deals on startup if the reels count drops to 0, or (c) relaxing the expired filter on reels for demo purposes."
+  ],
+  "critical_code_review_comments": [
+    "POST /api/auth/reset-password is a demo-mode endpoint with NO token / no OTP — a bare {email, new_password} lets anyone reset any user's password. This is documented in the docstring ('In production this would require a one-time token delivered by email') and matches the review request, but flagging for production hardening.",
+    "ResetPasswordIn correctly uses EmailStr + min_length=6 giving proper 422s via FastAPI/Pydantic (verified). Response shape is minimal {reset: true}, which the frontend can key off.",
+    "GET /api/deals?category=... uses a direct equality query on 'category' which is exactly what the merchant deal creation now writes (deal.category defaults to merchant.category on the frontend), so the fix works end-to-end at the DB level."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_reset_password_and_category.py (new)",
+    "/app/test_reports/iteration_5.json (new)",
+    "/app/test_reports/pytest/iteration_5_new.xml (new)",
+    "/app/test_reports/pytest/iteration_5_regression.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% on iteration-5 target scope — 8/8 new tests (reset-password + category filter) + 25/25 Phase 2 + 9/9 iter4 = 42/42 pass. 4 pre-existing failures in test_happyhour_api.py are unrelated to iter5 fixes.",
+    "frontend": "Not tested this iteration (review_request scoped to backend-only)."
+  },
+  "seed_data_creation": "Ephemeral users created via /api/auth/register with prefix 'test_reset_' + uuid suffix. No manual teardown; unique per run. No merchant / deal seed data added.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "For iter6, rerun /app/backend/tests/test_reset_password_and_category.py alongside the Phase 2 and iter4 suites — all should stay green. If you touch test_happyhour_api.py, make it count-tolerant. Base URL comes from /app/frontend/.env EXPO_PUBLIC_BACKEND_URL (currently https://local-deals-now.preview.emergentagent.com). No frontend testing was performed this iteration.",
+  "rca_of_issue": "Not applicable — iteration 5 was a verification pass on a bug-fix batch. The one product oddity found (empty /api/deals/reels) is pre-existing and caused by seed video deals having finite end_at windows; recommendation is to refresh reels seed on startup when count drops to 0."
+}

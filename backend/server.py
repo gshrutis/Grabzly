@@ -239,6 +239,11 @@ class MessageIn(BaseModel):
     text: str
 
 
+class ResetPasswordIn(BaseModel):
+    email: EmailStr
+    new_password: str = Field(min_length=6)
+
+
 # =========================================================================
 # AUTH ROUTES
 # =========================================================================
@@ -299,6 +304,20 @@ async def login(body: LoginIn):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     token = create_token(user["id"])
     return {"access_token": token, "user": _public_user(user)}
+
+
+@api.post("/auth/reset-password")
+async def reset_password(body: ResetPasswordIn):
+    """Demo-mode password reset: accepts email + new_password directly (no email verification).
+    In production this would require a one-time token delivered by email."""
+    user = await db.users.find_one({"email": body.email.lower()})
+    if not user:
+        raise HTTPException(status_code=404, detail="No account with that email")
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"password_hash": hash_password(body.new_password)}},
+    )
+    return {"reset": True}
 
 
 @api.get("/auth/me")
@@ -589,7 +608,7 @@ def _enrich_deals(deals: List[dict]) -> List[dict]:
                 exp_dt = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
                 d["expired"] = exp_dt < now
                 d["minutes_left"] = max(0, int((exp_dt - now).total_seconds() // 60))
-                d["is_live_now"] = (not d["expired"]) and d["minutes_left"] <= 60 and d.get("deal_type") != "regular"
+                d["is_live_now"] = (not d["expired"]) and d["minutes_left"] <= 60 and d.get("deal_type") == "flash"
             except Exception:
                 d["expired"] = False
                 d["minutes_left"] = 9999
@@ -1352,7 +1371,7 @@ def _make_deals_for_merchant(merchant: dict) -> List[dict]:
             "quantity_claimed": 0,
             "deal_type": dtype,
             "start_time": iso(now),
-            "expires_at": iso(now + timedelta(minutes=expires_min)) if dtype != "regular" else iso(now + timedelta(days=30)),
+            "expires_at": iso(now + timedelta(days=30)) if dtype == "video" else (iso(now + timedelta(minutes=expires_min)) if dtype != "regular" else iso(now + timedelta(days=30))),
             "per_customer_limit": 1,
             "image_url": img,
             "video_url": SAMPLE_VIDEOS[i % len(SAMPLE_VIDEOS)] if dtype == "video" else None,

@@ -9,6 +9,7 @@ import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { api } from "@/src/api/client";
 import { colors, radius, spacing, shadow } from "@/src/theme";
+import { formatMoney } from "@/src/utils/format";
 import Countdown from "@/src/components/Countdown";
 import EmptyState from "@/src/components/EmptyState";
 
@@ -168,9 +169,9 @@ export default function MerchantDeals() {
                   </View>
                   <Text style={styles.dealTitle} numberOfLines={2}>{item.title}</Text>
                   <View style={styles.dealMetaRow}>
-                    <Text style={styles.priceAfter}>${item.after_price?.toFixed(2)}</Text>
+                    <Text style={styles.priceAfter}>{formatMoney(item.after_price)}</Text>
                     {item.before_price && (
-                      <Text style={styles.priceBefore}>${item.before_price?.toFixed(2)}</Text>
+                      <Text style={styles.priceBefore}>{formatMoney(item.before_price)}</Text>
                     )}
                     {typeof item.discount_pct === "number" && (
                       <View style={styles.discPill}>
@@ -201,6 +202,11 @@ export default function MerchantDeals() {
               </View>
 
               <View style={styles.actionsRow}>
+                <ActionBtn
+                  icon="eye"
+                  label="View"
+                  onPress={() => router.push(`/deal/${item.id}`)}
+                />
                 <ActionBtn
                   icon="create" label="Edit"
                   onPress={() => router.push({ pathname: "/merchant/deal-form", params: { id: item.id } })}

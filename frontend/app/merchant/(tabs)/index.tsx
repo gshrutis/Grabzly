@@ -9,6 +9,7 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { api } from "@/src/api/client";
 import { colors, radius, spacing, shadow } from "@/src/theme";
+import { formatMoney } from "@/src/utils/format";
 
 export default function MerchantDashboard() {
   const insets = useSafeAreaInsets();
@@ -16,6 +17,7 @@ export default function MerchantDashboard() {
   const [merchant, setMerchant] = useState<any | null>(null);
   const [analytics, setAnalytics] = useState<any | null>(null);
   const [activeDeals, setActiveDeals] = useState<number>(0);
+  const [totalDeals, setTotalDeals] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -28,7 +30,9 @@ export default function MerchantDashboard() {
       ]);
       setMerchant(m);
       setAnalytics(a);
-      setActiveDeals((deals as any[]).filter((d: any) => !d.expired && !d.is_paused).length);
+      const dealList = deals as any[];
+      setActiveDeals(dealList.filter((d: any) => !d.expired && !d.is_paused && !d.is_draft).length);
+      setTotalDeals(dealList.filter((d: any) => !d.deleted).length);
     } catch (e) { console.warn(e); }
     setLoading(false);
   }, []);
@@ -139,8 +143,10 @@ export default function MerchantDashboard() {
           <StatCard label="Claims" value={stats.claims} icon="ticket" color={colors.brand} />
           <StatCard label="Redeemed" value={stats.redemptions} icon="checkmark-circle" color={colors.success} />
           <StatCard label="Redemption %" value={`${stats.redemption_rate}%`} icon="trending-up" color={colors.warning} />
-          <StatCard label="Est. GMV" value={`$${stats.gmv.toFixed(0)}`} icon="cash" color={colors.success} />
-          <StatCard label="Active deals" value={stats.active_deals} icon="flame" color={colors.brand} />
+          <StatCard label="Est. GMV" value={formatMoney(stats.gmv, { withDecimals: false })} icon="cash" color={colors.success} />
+          <StatCard label="Active deals" value={activeDeals} icon="flame" color={colors.brand} />
+          <StatCard label="Total posted" value={totalDeals} icon="albums" color={colors.info} />
+          <StatCard label="No-shows" value={stats.no_shows} icon="close-circle" color={colors.muted} />
         </View>
 
         {/* Hero cover */}

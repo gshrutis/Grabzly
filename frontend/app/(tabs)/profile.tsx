@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, ActivityIndicator, Share, Platform,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, ActivityIndicator, Share, Platform, Modal,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -85,6 +85,36 @@ export default function Profile() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const [showLocPicker, setShowLocPicker] = useState(false);
+  const { setManual } = useLocation();
+
+  const pickCity = async (city: { name: string; lat: number; lng: number }) => {
+    Haptics.selectionAsync().catch(() => {});
+    await setManual(city.lat, city.lng, city.name);
+    // Re-seed backend around new anchor so demo has nearby merchants there too
+    try {
+      await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/seed?lat=${city.lat}&lng=${city.lng}&force=true`, { method: "POST" });
+    } catch {}
+    setShowLocPicker(false);
+  };
+
+  const doSignOut = async () => {
+    Haptics.selectionAsync().catch(() => {});
+    await signOut();
+    router.replace("/(tabs)");
+  };
+
+  const CITIES = [
+    { name: "San Francisco, CA", lat: 37.7749, lng: -122.4194 },
+    { name: "New York, NY", lat: 40.7128, lng: -74.0060 },
+    { name: "Los Angeles, CA", lat: 34.0522, lng: -118.2437 },
+    { name: "London, UK", lat: 51.5074, lng: -0.1278 },
+    { name: "Tokyo, JP", lat: 35.6762, lng: 139.6503 },
+    { name: "Mumbai, IN", lat: 19.0760, lng: 72.8777 },
+    { name: "Bengaluru, IN", lat: 12.9716, lng: 77.5946 },
+    { name: "Delhi, IN", lat: 28.6139, lng: 77.2090 },
+  ];
 
   return (
     <ScrollView
@@ -206,16 +236,26 @@ export default function Profile() {
               <Text style={styles.rowSubtitle}>{loc.label}</Text>
             </View>
           </View>
-          {!granted && (
+          <View style={styles.locBtnRow}>
+            {!granted && (
+              <TouchableOpacity
+                testID="enable-loc-in-profile"
+                style={styles.inlineBtn}
+                onPress={requestPermission}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.inlineBtnText}>Use precise GPS</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
-              testID="enable-loc-in-profile"
-              style={styles.inlineBtn}
-              onPress={requestPermission}
+              testID="change-location-btn"
+              style={[styles.inlineBtn, { backgroundColor: colors.info }]}
+              onPress={() => setShowLocPicker(true)}
               activeOpacity={0.85}
             >
-              <Text style={styles.inlineBtnText}>Enable precise location</Text>
+              <Text style={[styles.inlineBtnText, { color: colors.white }]}>Change city</Text>
             </TouchableOpacity>
-          )}
+          </View>
         </View>
       </View>
 
@@ -317,7 +357,7 @@ export default function Profile() {
           <TouchableOpacity
             testID="signout-btn"
             style={styles.signOutBtn}
-            onPress={signOut}
+            onPress={doSignOut}
             activeOpacity={0.85}
           >
             <Ionicons name="log-out-outline" size={18} color={colors.error} />
@@ -327,6 +367,36 @@ export default function Profile() {
       )}
 
       <Text style={styles.footer}>HappyHour · v1.0</Text>
+
+      {/* Location picker modal */}
+      <Modal transparent animationType="slide" visible={showLocPicker} onRequestClose={() => setShowLocPicker(false)}>
+        <View style={styles.locModalOverlay}>
+          <View style={[styles.locModalSheet, { paddingBottom: insets.bottom + spacing.lg }]}>
+            <View style={styles.locSheetHeader}>
+              <Text style={styles.locSheetTitle}>Change city</Text>
+              <TouchableOpacity onPress={() => setShowLocPicker(false)}>
+                <Ionicons name="close" size={22} color={colors.onSurface} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.locSheetSub}>Pick a demo city — nearby merchants will be regenerated around it.</Text>
+            {CITIES.map((c) => (
+              <TouchableOpacity
+                key={c.name}
+                testID={`city-${c.name}`}
+                style={styles.cityRow}
+                onPress={() => pickCity(c)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="location" size={18} color={colors.brand} />
+                <Text style={styles.cityName}>{c.name}</Text>
+                {loc.label === c.name && (
+                  <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -469,6 +539,25 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandTertiary,
   },
   inlineBtnText: { color: colors.brand, fontSize: 13, fontWeight: "800" },
+  locBtnRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm, flexWrap: "wrap" },
+  locModalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  locModalSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl,
+    padding: spacing.lg,
+    gap: spacing.sm,
+    maxHeight: "80%",
+  },
+  locSheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  locSheetTitle: { fontSize: 18, fontWeight: "800", color: colors.onSurface },
+  locSheetSub: { fontSize: 12, color: colors.muted, marginBottom: spacing.sm },
+  cityRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    padding: spacing.md, borderRadius: radius.md,
+    backgroundColor: colors.surfaceSecondary,
+    ...shadow.card,
+  },
+  cityName: { flex: 1, fontSize: 14, fontWeight: "700", color: colors.onSurface },
   catGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   catChip: {
     flexDirection: "row", alignItems: "center", gap: 6,

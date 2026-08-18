@@ -52,6 +52,11 @@ export const api = {
       method: "POST",
       body: { email, password },
     }),
+  resetPassword: (email: string, new_password: string) =>
+    request<{ reset: boolean }>("/auth/reset-password", {
+      method: "POST",
+      body: { email, new_password },
+    }),
   me: () => request("/auth/me", { auth: true }),
   updateMe: (patch: { name?: string; preferred_categories?: string[] }) =>
     request("/auth/me", { method: "PATCH", body: patch, auth: true }),

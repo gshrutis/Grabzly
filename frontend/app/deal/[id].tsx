@@ -15,6 +15,7 @@ import { useAuth } from "@/src/context/auth";
 import { useLocation } from "@/src/context/location";
 import { colors, radius, spacing, shadow } from "@/src/theme";
 import Countdown from "@/src/components/Countdown";
+import { formatMoney } from "@/src/utils/format";
 
 export default function DealDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -29,9 +30,10 @@ export default function DealDetail() {
   const [videoMuted, setVideoMuted] = useState(true);
 
   const player = useVideoPlayer(deal?.video_url ?? null, (p) => {
+    if (!p) return;
     p.loop = true;
     p.muted = true;
-    p.play();
+    try { p.play(); } catch {}
   });
 
   useEffect(() => {
@@ -111,13 +113,17 @@ export default function DealDetail() {
         <View style={styles.hero}>
           {deal.video_url ? (
             <VideoView
+              key={deal.video_url}
               player={player}
               style={StyleSheet.absoluteFillObject}
               contentFit="cover"
               nativeControls={false}
+              allowsFullscreen={false}
             />
-          ) : (
+          ) : deal.image_url ? (
             <Image source={{ uri: deal.image_url }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
+          ) : (
+            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.surfaceTertiary }]} />
           )}
           <LinearGradient
             colors={["rgba(45,36,34,0.6)", "transparent", "rgba(45,36,34,0.85)"]}
@@ -160,9 +166,9 @@ export default function DealDetail() {
         <View style={styles.metaCards}>
           <View style={styles.metaCard}>
             <Text style={styles.metaLabel}>Now</Text>
-            <Text style={styles.metaValue}>${(deal.after_price ?? 0).toFixed(2)}</Text>
+            <Text style={styles.metaValue}>{formatMoney(deal.after_price ?? 0)}</Text>
             {typeof deal.before_price === "number" && (
-              <Text style={styles.metaWas}>was ${deal.before_price.toFixed(2)}</Text>
+              <Text style={styles.metaWas}>was {formatMoney(deal.before_price)}</Text>
             )}
           </View>
           {deal.deal_type !== "regular" && deal.expires_at ? (

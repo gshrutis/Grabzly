@@ -11,6 +11,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
 import { api } from "@/src/api/client";
 import { CATEGORY_META, colors, radius, spacing, shadow } from "@/src/theme";
+import { formatMoney } from "@/src/utils/format";
 
 type DealType = "flash" | "regular" | "video";
 
@@ -22,7 +23,14 @@ const HOURS_OPTIONS = [
   { label: "1 day", mins: 60 * 24 },
 ];
 
-const DIETARY_TAGS = ["Vegan", "Vegetarian", "Gluten-free", "Halal", "Kosher", "Spicy"];
+const TAGS_BY_CATEGORY: Record<string, string[]> = {
+  food: ["Vegan", "Vegetarian", "Gluten-free", "Halal", "Kosher", "Spicy", "Contains nuts", "Dairy-free"],
+  grocery: ["Organic", "Farm-fresh", "Local", "Imported", "Frozen", "Ready-to-eat"],
+  clothing: ["Men", "Women", "Unisex", "Kids", "New arrival", "Limited edition", "Sustainable"],
+  kitchenware: ["Handmade", "Dishwasher-safe", "Non-stick", "Ceramic", "Stainless", "Cast iron", "Eco-friendly"],
+  cafe: ["Signature", "Seasonal", "Caffeine-free", "Vegan", "Dairy-free", "Sugar-free"],
+  bakery: ["Fresh today", "Vegan", "Gluten-free", "Sourdough", "Contains nuts", "Egg-free"],
+};
 
 export default function DealForm() {
   const insets = useSafeAreaInsets();
@@ -56,8 +64,11 @@ export default function DealForm() {
   useEffect(() => {
     (async () => {
       try {
-        const vids = await api.sampleVideos();
+        const [vids, m] = await Promise.all([api.sampleVideos(), api.merchantMe()]);
         setSampleVideos(vids);
+        if (m?.category) {
+          if (!isEdit) setCategory(m.category);
+        }
       } catch {}
       if (isEdit) {
         try {
@@ -91,9 +102,8 @@ export default function DealForm() {
     }
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [16, 10],
-      quality: 0.6,
+      allowsEditing: false,
+      quality: 0.7,
       base64: true,
     });
     if (!res.canceled && res.assets?.[0]?.base64) {
@@ -175,7 +185,7 @@ export default function DealForm() {
         expires_at: dealType === "regular" ? undefined : expires.toISOString(),
         image_url: image ?? undefined,
         video_url: dealType === "video" ? (videoUrl ?? undefined) : undefined,
-        dietary_tags: category === "food" ? Array.from(dietary) : undefined,
+        dietary_tags: Array.from(dietary),
         terms,
         is_draft: draft,
       };
@@ -404,16 +414,17 @@ export default function DealForm() {
           </>
         )}
 
-        {/* Dietary tags for food */}
-        {category === "food" && (
+        {/* Tags — per category */}
+        {(TAGS_BY_CATEGORY[category]?.length ?? 0) > 0 && (
           <>
-            <Text style={styles.label}>Dietary tags (optional)</Text>
+            <Text style={styles.label}>Tags (optional)</Text>
             <View style={styles.chipRow}>
-              {DIETARY_TAGS.map((tag) => {
+              {TAGS_BY_CATEGORY[category].map((tag) => {
                 const active = dietary.has(tag);
                 return (
                   <TouchableOpacity
                     key={tag}
+                    testID={`df-tag-${tag}`}
                     style={[styles.chip, active && { backgroundColor: colors.info, borderColor: colors.info }]}
                     onPress={() => toggleTag(tag)}
                   >
@@ -539,8 +550,8 @@ export default function DealForm() {
                 <Text style={styles.previewTitle}>{title || "Deal title"}</Text>
                 <Text style={styles.previewDesc}>{description || "Description will appear here."}</Text>
                 <View style={styles.previewPriceRow}>
-                  {before && <Text style={styles.previewBefore}>${before}</Text>}
-                  <Text style={styles.previewAfter}>${after || "0.00"}</Text>
+                  {before && <Text style={styles.previewBefore}>{formatMoney(Number(before))}</Text>}
+                  <Text style={styles.previewAfter}>{formatMoney(Number(after) || 0)}</Text>
                 </View>
               </View>
             </View>

@@ -139,7 +139,7 @@ export default function MerchantSettings() {
       <Row
         icon="log-out-outline"
         label="Sign out"
-        onPress={signOut}
+        onPress={async () => { await signOut(); router.replace("/(tabs)"); }}
         danger
         testID="merchant-signout"
       />

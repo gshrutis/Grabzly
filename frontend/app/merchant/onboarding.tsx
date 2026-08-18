@@ -51,7 +51,7 @@ export default function MerchantOnboarding() {
     if (!user) router.replace("/sign-in");
   }, [user, router]);
 
-  const pickImage = async (setter: (uri: string) => void, aspect: [number, number] = [1, 1]) => {
+  const pickImage = async (setter: (uri: string) => void, aspect?: [number, number]) => {
     if (Platform.OS !== "web") {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
@@ -61,9 +61,9 @@ export default function MerchantOnboarding() {
     }
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
+      allowsEditing: !!aspect,
       aspect,
-      quality: 0.6,
+      quality: 0.7,
       base64: true,
     });
     if (!res.canceled && res.assets?.[0]?.base64) {
@@ -231,21 +231,21 @@ export default function MerchantOnboarding() {
             <DocPicker
               label="Business license/registration"
               value={licenseDoc}
-              onPick={() => pickImage(setLicenseDoc, [4, 3])}
+              onPick={() => pickImage(setLicenseDoc)}
               icon="document-text"
               testID="mo-license"
             />
             <DocPicker
               label="Tax ID document"
               value={taxDoc}
-              onPick={() => pickImage(setTaxDoc, [4, 3])}
+              onPick={() => pickImage(setTaxDoc)}
               icon="receipt"
               testID="mo-tax"
             />
             <DocPicker
               label="Owner ID proof"
               value={idDoc}
-              onPick={() => pickImage(setIdDoc, [3, 2])}
+              onPick={() => pickImage(setIdDoc)}
               icon="card"
               testID="mo-id"
             />
@@ -265,11 +265,11 @@ export default function MerchantOnboarding() {
             <Text style={styles.stepTitle}>Store branding</Text>
             <Text style={styles.stepHint}>Logo + cover photo — makes your store look professional.</Text>
 
-            <Field label="Store logo (square)">
+            <Field label="Store logo">
               <TouchableOpacity
                 testID="mo-logo-pick"
                 style={styles.logoPick}
-                onPress={() => pickImage(setLogo, [1, 1])}
+                onPress={() => pickImage(setLogo)}
                 activeOpacity={0.85}
               >
                 {logo ? (
@@ -283,11 +283,11 @@ export default function MerchantOnboarding() {
               </TouchableOpacity>
             </Field>
 
-            <Field label="Cover photo (16:9)">
+            <Field label="Cover photo">
               <TouchableOpacity
                 testID="mo-cover-pick"
                 style={styles.coverPick}
-                onPress={() => pickImage(setCover, [16, 9])}
+                onPress={() => pickImage(setCover)}
                 activeOpacity={0.85}
               >
                 {cover ? (

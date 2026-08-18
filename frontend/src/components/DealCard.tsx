@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import Countdown from "./Countdown";
 import { colors, radius, spacing, shadow } from "@/src/theme";
+import { formatMoney } from "@/src/utils/format";
 
 type Deal = {
   id: string;
@@ -83,10 +84,10 @@ export default function DealCard({ deal, compact = false }: { deal: Deal; compac
       <View style={styles.footer}>
         <View style={styles.priceRow}>
           {typeof deal.before_price === "number" && (
-            <Text style={styles.beforePrice}>${deal.before_price.toFixed(2)}</Text>
+            <Text style={styles.beforePrice}>{formatMoney(deal.before_price)}</Text>
           )}
           {typeof deal.after_price === "number" && (
-            <Text style={styles.afterPrice}>${deal.after_price.toFixed(2)}</Text>
+            <Text style={styles.afterPrice}>{formatMoney(deal.after_price)}</Text>
           )}
         </View>
         <View style={styles.metaRow}>

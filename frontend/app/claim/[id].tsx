@@ -8,9 +8,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import QRCode from "react-native-qrcode-svg";
 import * as Haptics from "expo-haptics";
+import * as Clipboard from "expo-clipboard";
 import { api } from "@/src/api/client";
 import Countdown from "@/src/components/Countdown";
 import { colors, radius, spacing, shadow } from "@/src/theme";
+import { formatMoney } from "@/src/utils/format";
 
 export default function ClaimScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -19,6 +21,15 @@ export default function ClaimScreen() {
   const [claim, setClaim] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copyCode = async () => {
+    if (!claim) return;
+    await Clipboard.setStringAsync(claim.redemption_code);
+    setCopied(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   useEffect(() => {
     (async () => {
@@ -93,8 +104,20 @@ export default function ClaimScreen() {
               color={colors.onSurface}
             />
             <Text style={styles.qrCodeLabel}>Redemption code</Text>
-            <Text style={styles.qrCode}>{claim.redemption_code}</Text>
-            <Text style={styles.qrHint}>Show this to the merchant at the counter. They will scan or enter the code manually.</Text>
+            <TouchableOpacity
+              testID="claim-copy-code"
+              onPress={copyCode}
+              activeOpacity={0.75}
+              style={styles.qrCodeCopyRow}
+            >
+              <Text style={styles.qrCode}>{claim.redemption_code}</Text>
+              <View style={[styles.copyIcon, copied && { backgroundColor: colors.success }]}>
+                <Ionicons name={copied ? "checkmark" : "copy"} size={14} color={colors.white} />
+              </View>
+            </TouchableOpacity>
+            <Text style={styles.qrHint}>
+              {copied ? "Copied ✓ — paste at the merchant counter" : "Tap the code to copy. Show QR to merchant."}
+            </Text>
           </View>
         )}
 
@@ -108,10 +131,10 @@ export default function ClaimScreen() {
             <Text style={styles.summaryMerchant}>{claim.merchant_name}</Text>
             <View style={styles.summaryPriceRow}>
               {typeof claim.before_price === "number" && (
-                <Text style={styles.summaryPriceBefore}>${claim.before_price.toFixed(2)}</Text>
+                <Text style={styles.summaryPriceBefore}>{formatMoney(claim.before_price)}</Text>
               )}
               {typeof claim.after_price === "number" && (
-                <Text style={styles.summaryPriceAfter}>${claim.after_price.toFixed(2)}</Text>
+                <Text style={styles.summaryPriceAfter}>{formatMoney(claim.after_price)}</Text>
               )}
               {typeof claim.discount_pct === "number" && (
                 <View style={styles.summaryDiscount}>
@@ -178,11 +201,25 @@ const styles = StyleSheet.create({
     fontSize: 11, color: colors.muted, fontWeight: "800", letterSpacing: 0.8, textTransform: "uppercase",
   },
   qrCode: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: "800",
     color: colors.brand,
     letterSpacing: 4,
+  },
+  qrCodeCopyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.md,
+    backgroundColor: colors.brandTertiary,
     marginTop: 4,
+  },
+  copyIcon: {
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: colors.brand,
+    alignItems: "center", justifyContent: "center",
   },
   qrHint: {
     marginTop: spacing.md, fontSize: 12, color: colors.muted,
