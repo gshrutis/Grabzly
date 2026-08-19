@@ -1,0 +1,52 @@
+{
+  "summary": "Iteration 7 backend-only verification for the new mobile OTP auth endpoints + 'phone' key added to /_public_user output. Created /app/backend/tests/test_otp_auth_iter7.py with 7 targeted tests covering all 5 OTP acceptance criteria + 2 email/password regressions. All 7 PASS. Ran the requested regression suites — Phase 2 merchant+loyalty (25 tests), iter5 reset-password + category filter (8 tests) and iter6 persistence (3 tests): 36/36 PASS. Combined iter7 result: 43/43 backend tests green. Behaviour confirmed: POST /api/auth/otp/request returns {sent:true, demo_code:'123456'} and upserts otp_codes; POST /api/auth/otp/verify with '123456'+name creates a new customer with phone set / email=null; a second verify for the same phone (no name) returns the SAME user id (upsert-by-phone, name preserved); wrong code returns 401 'Invalid or expired code'; the JWT from verify authenticates /auth/me correctly and role can be elevated via /merchant/onboard to 'merchant'; existing register/login/reset-password flows all still succeed and /auth/me now consistently exposes both 'email' and 'phone' keys (either can be null depending on signup path).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/otp/request", "issue": "Endpoint is unauthenticated and returns demo_code plain-text in the response body. Acceptable for demo mode per PRD (mocked OTP intentional), but should be feature-flagged / removed before real launch so production clients cannot bypass SMS."},
+      {"endpoint": "POST /api/auth/otp/verify", "issue": "Hard-coded universal fallback '123456' is accepted regardless of whether /otp/request was previously called. Fine for demo, but flag for prod: real code must be per-phone, single-use, TTL-bounded, and stored otp_codes should be deleted / marked used after successful verify (currently the record is left in place indefinitely)."},
+      {"endpoint": "POST /api/auth/otp/verify", "issue": "No rate-limit or attempt-counter — brute force is trivial (10^6 space, no lockout). Non-blocking for demo but must be addressed before real SMS provider hook-up."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_otp_auth_iter7.py",
+    "/app/backend/tests/test_phase2_merchant_loyalty.py",
+    "/app/backend/tests/test_reset_password_and_category.py",
+    "/app/backend/tests/test_signout_reseed_persistence.py",
+    "/app/test_reports/pytest/iteration_7_otp.xml",
+    "/app/test_reports/pytest/iteration_7_regression.xml"
+  ],
+  "action_items": [
+    "(Optional hardening) Before shipping outside demo, add TTL + one-time-use semantics to otp_codes docs, delete after successful verify, add per-phone rate limit on /auth/otp/request (e.g. 1/min, 5/hr), and remove demo_code from the response body when NODE_ENV=production.",
+    "(Optional) Consider validating phone format server-side (E.164) — right now any string 6–20 chars is accepted, so '+15550000000' and '5550000000' create two distinct accounts.",
+    "(Nice to have) On /auth/otp/verify when the user already exists but body.name is provided, decide whether to overwrite the stored name. Currently existing user's name is preserved (this is the safe default and matches the test expectation, but worth documenting)."
+  ],
+  "critical_code_review_comments": [
+    "_public_user() now exposes 'phone' in addition to 'email' — confirmed present in /auth/register, /auth/login, /auth/otp/verify, /auth/me and /auth/me PATCH responses. Shape is symmetric across email-signup users (phone=null) and phone-signup users (email=null).",
+    "otp_verify() correctly (a) accepts the universal demo code without a preceding /otp/request, (b) falls back to the stored code lookup when the submitted code differs from DEMO_OTP, (c) upserts by 'phone' (find_one then insert only when missing) so a repeat verify for the same number returns the same user id — no duplicate accounts.",
+    "Phone-signup users get password_hash=None. Care is needed: POST /auth/login on such an account currently 401s at verify_password (because bcrypt refuses an empty hash) — this is the correct behaviour, but the error message is 'Incorrect email or password' which is fine.",
+    "OTP record is NOT deleted after successful verify. This is a minor demo-only leak and enables replay of the same code — acceptable for the mock, must change for prod (see minor issues).",
+    "No changes detected in /merchant/* or /deals/* code paths — regression suites confirm no incidental breakage."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_otp_auth_iter7.py (new)",
+    "/app/test_reports/iteration_7.json (new)",
+    "/app/test_reports/pytest/iteration_7_otp.xml (new)",
+    "/app/test_reports/pytest/iteration_7_regression.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% — 7/7 new OTP+regression tests + 25/25 Phase 2 + 8/8 iter5 + 3/3 iter6 = 43/43 pass on iteration 7 scope.",
+    "frontend": "Not tested (review_request scoped to backend-only)."
+  },
+  "seed_data_creation": "Each OTP test creates a fresh phone-based customer (name prefix 'Iter7'); the merchant-elevation test onboards one merchant named 'Iter7 Bar <hex>'. Email regression tests create two customers with prefix 'iter7_'. All entries persist harmlessly in db.users / db.merchants / db.otp_codes (tests key off ids returned within the test run).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iter7 fix verified backend-side: OTP request/verify endpoints work end-to-end, JWT from OTP verify is interchangeable with the email/password JWT everywhere (auth/me, merchant/onboard, deals, etc.), and existing suites are unaffected. Frontend flows (PhoneAuthTab, merchant onboarding prefill, LeafletMap pin picker) were NOT tested per the review_request scope — main agent should verify these via mobile web preview at EXPO_PUBLIC_BACKEND_URL from /app/frontend/.env. Base URL loader in the test file uses python-dotenv on /app/frontend/.env, so tests are runnable standalone via `pytest backend/tests/test_otp_auth_iter7.py -v`.",
+  "mocked_api_note": "OTP is intentionally mocked (code='123456' always accepted). This is by design per PRD; report flags hardening items for prod."
+}

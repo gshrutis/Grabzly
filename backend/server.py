@@ -244,6 +244,17 @@ class ResetPasswordIn(BaseModel):
     new_password: str = Field(min_length=6)
 
 
+class OtpRequestIn(BaseModel):
+    phone: str = Field(min_length=6, max_length=20)
+
+
+class OtpVerifyIn(BaseModel):
+    phone: str
+    code: str
+    name: Optional[str] = None
+    referral_code: Optional[str] = None
+
+
 # =========================================================================
 # AUTH ROUTES
 # =========================================================================
@@ -288,7 +299,7 @@ async def register(body: RegisterIn):
 
 def _public_user(u: dict) -> dict:
     return {
-        "id": u["id"], "email": u["email"], "name": u["name"], "role": u.get("role", "customer"),
+        "id": u["id"], "email": u.get("email"), "phone": u.get("phone"), "name": u["name"], "role": u.get("role", "customer"),
         "preferred_categories": u.get("preferred_categories", []),
         "favorited_merchants": u.get("favorited_merchants", []),
         "points": u.get("points", 0),
@@ -302,6 +313,65 @@ async def login(body: LoginIn):
     user = await db.users.find_one({"email": body.email.lower()})
     if not user or not verify_password(body.password, user.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
+    token = create_token(user["id"])
+    return {"access_token": token, "user": _public_user(user)}
+
+
+# =========================================================================
+# OTP (mock — always accepts "123456" or the most recently requested code)
+# =========================================================================
+DEMO_OTP = "123456"
+
+
+@api.post("/auth/otp/request")
+async def otp_request(body: OtpRequestIn):
+    """Mock OTP: for the demo we log the code but never actually send SMS.
+    The frontend can accept `123456` OR the code returned in the debug field."""
+    phone = body.phone.strip()
+    await db.otp_codes.update_one(
+        {"phone": phone},
+        {"$set": {"phone": phone, "code": DEMO_OTP, "created_at": iso(now_utc())}},
+        upsert=True,
+    )
+    logger.info(f"[MOCK OTP] phone={phone} code={DEMO_OTP}")
+    # Return debug field so the frontend can auto-fill in demo mode.
+    return {"sent": True, "demo_code": DEMO_OTP}
+
+
+@api.post("/auth/otp/verify")
+async def otp_verify(body: OtpVerifyIn):
+    phone = body.phone.strip()
+    if body.code.strip() != DEMO_OTP:
+        rec = await db.otp_codes.find_one({"phone": phone})
+        if not rec or rec.get("code") != body.code.strip():
+            raise HTTPException(status_code=401, detail="Invalid or expired code")
+    # Upsert user by phone
+    user = await db.users.find_one({"phone": phone})
+    if not user:
+        user_id = str(uuid.uuid4())
+        referral_code = new_referral_code()
+        referred_by = None
+        if body.referral_code:
+            ref = await db.users.find_one({"referral_code": body.referral_code.upper()})
+            if ref:
+                referred_by = ref["id"]
+        user_doc = {
+            "id": user_id,
+            "phone": phone,
+            "email": None,
+            "password_hash": None,
+            "name": (body.name or f"HH{phone[-4:]}"),
+            "role": "customer",
+            "preferred_categories": [],
+            "favorited_merchants": [],
+            "points": 0,
+            "pending_signup_bonus": 0,
+            "referral_code": referral_code,
+            "referred_by": referred_by,
+            "created_at": iso(now_utc()),
+        }
+        await db.users.insert_one(user_doc)
+        user = user_doc
     token = create_token(user["id"])
     return {"access_token": token, "user": _public_user(user)}
 

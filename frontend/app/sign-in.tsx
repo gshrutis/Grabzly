@@ -8,13 +8,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useAuth } from "@/src/context/auth";
+import PhoneAuthTab from "@/src/components/PhoneAuthTab";
 import { colors, radius, spacing, shadow } from "@/src/theme";
 
 export default function SignIn() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { signIn } = useAuth();
+  const { signIn, refresh } = useAuth();
   const params = useLocalSearchParams<{ returnTo?: string }>();
+  const [mode, setMode] = useState<"phone" | "email">("phone");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -68,6 +70,37 @@ export default function SignIn() {
         </View>
 
         <View style={styles.form}>
+          <View style={styles.modeSwitch}>
+            <TouchableOpacity
+              testID="mode-phone"
+              style={[styles.modeBtn, mode === "phone" && styles.modeBtnActive]}
+              onPress={() => setMode("phone")}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="phone-portrait" size={14} color={mode === "phone" ? colors.white : colors.onSurface} />
+              <Text style={[styles.modeText, mode === "phone" && { color: colors.white }]}>Phone</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="mode-email"
+              style={[styles.modeBtn, mode === "email" && styles.modeBtnActive]}
+              onPress={() => setMode("email")}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="mail" size={14} color={mode === "email" ? colors.white : colors.onSurface} />
+              <Text style={[styles.modeText, mode === "email" && { color: colors.white }]}>Email</Text>
+            </TouchableOpacity>
+          </View>
+
+          {mode === "phone" ? (
+            <PhoneAuthTab
+              onSuccess={async () => {
+                await refresh();
+                if (params.returnTo) router.replace(params.returnTo as any);
+                else router.back();
+              }}
+            />
+          ) : (
+          <>
           <View style={styles.field}>
             <Text style={styles.label}>Email</Text>
             <TextInput
@@ -157,6 +190,8 @@ export default function SignIn() {
             <Ionicons name="storefront" size={16} color={colors.brand} />
             <Text style={styles.merchantLinkText}>Log in as a merchant</Text>
           </TouchableOpacity>
+          </>
+          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -238,4 +273,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandTertiary,
   },
   merchantLinkText: { color: colors.brand, fontSize: 14, fontWeight: "800" },
+  modeSwitch: {
+    flexDirection: "row", padding: 4, gap: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceTertiary,
+    marginBottom: spacing.sm,
+  },
+  modeBtn: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 6, height: 40, borderRadius: radius.pill,
+  },
+  modeBtnActive: { backgroundColor: colors.brand },
+  modeText: { fontSize: 13, fontWeight: "800", color: colors.onSurface },
 });

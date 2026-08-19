@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Platform,
+  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Platform, Modal,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,6 +12,7 @@ import { api } from "@/src/api/client";
 import { useAuth } from "@/src/context/auth";
 import { useLocation } from "@/src/context/location";
 import { CATEGORY_META, colors, radius, spacing, shadow } from "@/src/theme";
+import LeafletMap from "@/src/components/LeafletMap";
 
 type Step = 1 | 2 | 3;
 
@@ -34,8 +35,10 @@ export default function MerchantOnboarding() {
   const [phone, setPhone] = useState("");
   const [priceRange, setPriceRange] = useState<"$" | "$$" | "$$$">("$$");
   const [description, setDescription] = useState("");
-  const [lat] = useState(loc.lat);
-  const [lng] = useState(loc.lng);
+  const [lat, setLat] = useState(loc.lat);
+  const [lng, setLng] = useState(loc.lng);
+  const [showMap, setShowMap] = useState(false);
+  const [isEdit, setIsEdit] = useState(false);
 
   // KYC
   const [licenseDoc, setLicenseDoc] = useState<string | null>(null);
@@ -48,7 +51,33 @@ export default function MerchantOnboarding() {
   const [cover, setCover] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) router.replace("/sign-in");
+    if (!user) { router.replace("/sign-in"); return; }
+    // Prefill from existing merchant profile if the user has one.
+    (async () => {
+      try {
+        const m = await api.merchantMe();
+        if (m) {
+          setIsEdit(true);
+          setName(m.name || "");
+          setCategory(m.category || "food");
+          setSubCategory(m.sub_category || "");
+          setAddress(m.address || "");
+          setHours(m.hours || "10:00 - 22:00");
+          setPhone(m.phone || "");
+          setPriceRange((m.price_range as any) || "$$");
+          setDescription(m.description || "");
+          setLogo(m.logo || null);
+          setCover(m.cover_image || null);
+          setLicenseDoc(m.business_license_doc || null);
+          setTaxDoc(m.tax_id_doc || null);
+          setIdDoc(m.owner_id_doc || null);
+          setTaxIdNumber(m.tax_id_number || "");
+          if (typeof m.lat === "number" && typeof m.lng === "number") {
+            setLat(m.lat); setLng(m.lng);
+          }
+        }
+      } catch {}
+    })();
   }, [user, router]);
 
   const pickImage = async (setter: (uri: string) => void, aspect?: [number, number]) => {
@@ -177,7 +206,18 @@ export default function MerchantOnboarding() {
                 placeholder="Street, City" placeholderTextColor={colors.muted}
                 style={styles.input}
               />
-              <Text style={styles.locPin}>Pin location: {lat.toFixed(4)}, {lng.toFixed(4)}</Text>
+              <View style={styles.pinRow}>
+                <Text style={styles.locPin}>Pin: {lat.toFixed(4)}, {lng.toFixed(4)}</Text>
+                <TouchableOpacity
+                  testID="mo-pick-map"
+                  style={styles.pickMapBtn}
+                  onPress={() => setShowMap(true)}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="map" size={14} color={colors.brand} />
+                  <Text style={styles.pickMapBtnText}>Pick on map</Text>
+                </TouchableOpacity>
+              </View>
             </Field>
 
             <Field label="Business hours">
@@ -327,12 +367,46 @@ export default function MerchantOnboarding() {
             <ActivityIndicator color={colors.white} />
           ) : (
             <>
-              <Text style={styles.primaryBtnText}>{step < 3 ? "Continue" : "Submit & go live"}</Text>
+              <Text style={styles.primaryBtnText}>{step < 3 ? "Continue" : (isEdit ? "Save changes" : "Submit & go live")}</Text>
               <Ionicons name="arrow-forward" size={18} color={colors.white} />
             </>
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Map picker modal */}
+      <Modal transparent animationType="slide" visible={showMap} onRequestClose={() => setShowMap(false)}>
+        <View style={styles.mapOverlay}>
+          <View style={[styles.mapSheet, { paddingBottom: insets.bottom + spacing.lg, paddingTop: insets.top + spacing.md }]}>
+            <View style={styles.mapHeader}>
+              <Text style={styles.mapTitle}>Tap the map to set your store location</Text>
+              <TouchableOpacity onPress={() => setShowMap(false)}>
+                <Ionicons name="close" size={24} color={colors.onSurface} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.mapSub}>Current pin: {lat.toFixed(4)}, {lng.toFixed(4)}</Text>
+            <View style={{ flex: 1, marginTop: spacing.md, borderRadius: radius.lg, overflow: "hidden" }}>
+              <LeafletMap
+                center={{ lat, lng }}
+                zoom={15}
+                tappable
+                showUser
+                onTap={(la, lo) => { setLat(la); setLng(lo); Haptics.selectionAsync().catch(() => {}); }}
+                height="100%"
+              />
+            </View>
+            <TouchableOpacity
+              testID="mo-confirm-pin"
+              style={[styles.primaryBtn, { marginTop: spacing.md }]}
+              onPress={() => setShowMap(false)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="checkmark" size={18} color={colors.white} />
+              <Text style={styles.primaryBtnText}>Confirm location</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -402,7 +476,20 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: colors.border,
     fontSize: 15, color: colors.onSurface,
   },
-  locPin: { marginTop: 4, fontSize: 11, color: colors.muted, fontWeight: "700" },
+  locPin: { fontSize: 11, color: colors.muted, fontWeight: "700" },
+  pinRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 6 },
+  pickMapBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: colors.brandTertiary,
+  },
+  pickMapBtnText: { color: colors.brand, fontSize: 12, fontWeight: "800" },
+  mapOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)" },
+  mapSheet: { flex: 1, backgroundColor: colors.surface, padding: spacing.lg },
+  mapHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  mapTitle: { flex: 1, fontSize: 16, fontWeight: "800", color: colors.onSurface },
+  mapSub: { fontSize: 12, color: colors.muted, marginTop: 4, fontWeight: "700" },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {
     flexDirection: "row", alignItems: "center", gap: 6,

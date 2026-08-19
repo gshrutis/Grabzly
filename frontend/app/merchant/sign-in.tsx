@@ -9,12 +9,14 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useAuth } from "@/src/context/auth";
 import { api } from "@/src/api/client";
+import PhoneAuthTab from "@/src/components/PhoneAuthTab";
 import { colors, radius, spacing, shadow } from "@/src/theme";
 
 export default function MerchantSignIn() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { signIn, refresh } = useAuth();
+  const [mode, setMode] = useState<"phone" | "email">("phone");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -77,6 +79,38 @@ export default function MerchantSignIn() {
         </View>
 
         <View style={styles.form}>
+          <View style={styles.modeSwitch}>
+            <TouchableOpacity
+              testID="mmode-phone"
+              style={[styles.modeBtn, mode === "phone" && styles.modeBtnActive]}
+              onPress={() => setMode("phone")}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="phone-portrait" size={14} color={mode === "phone" ? colors.white : colors.onSurface} />
+              <Text style={[styles.modeText, mode === "phone" && { color: colors.white }]}>Phone</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="mmode-email"
+              style={[styles.modeBtn, mode === "email" && styles.modeBtnActive]}
+              onPress={() => setMode("email")}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="mail" size={14} color={mode === "email" ? colors.white : colors.onSurface} />
+              <Text style={[styles.modeText, mode === "email" && { color: colors.white }]}>Email</Text>
+            </TouchableOpacity>
+          </View>
+
+          {mode === "phone" ? (
+            <PhoneAuthTab
+              role="merchant"
+              onSuccess={async () => {
+                await refresh();
+                try { await api.merchantMe(); router.replace("/merchant/(tabs)"); }
+                catch { router.replace("/merchant/onboarding"); }
+              }}
+            />
+          ) : (
+          <>
           <View style={styles.field}>
             <Text style={styles.label}>Email</Text>
             <TextInput
@@ -169,6 +203,8 @@ export default function MerchantSignIn() {
             <Ionicons name="person" size={16} color={colors.muted} />
             <Text style={styles.customerLinkText}>Customer login</Text>
           </TouchableOpacity>
+          </>
+          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -257,4 +293,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   customerLinkText: { color: colors.muted, fontSize: 14, fontWeight: "700" },
+  modeSwitch: {
+    flexDirection: "row", padding: 4, gap: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceTertiary,
+    marginBottom: spacing.sm,
+  },
+  modeBtn: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 6, height: 40, borderRadius: radius.pill,
+  },
+  modeBtnActive: { backgroundColor: colors.brand },
+  modeText: { fontSize: 13, fontWeight: "800", color: colors.onSurface },
 });

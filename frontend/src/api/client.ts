@@ -57,6 +57,16 @@ export const api = {
       method: "POST",
       body: { email, new_password },
     }),
+  otpRequest: (phone: string) =>
+    request<{ sent: boolean; demo_code?: string }>("/auth/otp/request", {
+      method: "POST",
+      body: { phone },
+    }),
+  otpVerify: (phone: string, code: string, name?: string, referral_code?: string) =>
+    request<{ access_token: string; user: any }>("/auth/otp/verify", {
+      method: "POST",
+      body: { phone, code, name, referral_code },
+    }),
   me: () => request("/auth/me", { auth: true }),
   updateMe: (patch: { name?: string; preferred_categories?: string[] }) =>
     request("/auth/me", { method: "PATCH", body: patch, auth: true }),

@@ -53,6 +53,25 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     setRequesting(true);
     try {
       if (Platform.OS === "web") {
+        // Use browser geolocation on web
+        if (typeof navigator !== "undefined" && (navigator as any).geolocation) {
+          const pos: any = await new Promise((resolve, reject) => {
+            (navigator as any).geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
+          }).catch(() => null);
+          if (pos && pos.coords) {
+            const next: LocationState = {
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+              label: "Current location",
+              isFallback: false,
+            };
+            setLoc(next);
+            setGranted(true);
+            await storage.setItem(LOC_KEY, JSON.stringify(next));
+            setRequesting(false);
+            return true;
+          }
+        }
         setRequesting(false);
         return false;
       }
