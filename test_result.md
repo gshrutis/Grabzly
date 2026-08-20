@@ -101,3 +101,116 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: |
+  Build "Happy Hour", a hyper-local marketplace app connecting nearby merchants with customers
+  seeking real-time, location-relevant deals. Latest iteration adds:
+  1) Sign-up screens (customer + merchant) with Mobile/Email tabs
+  2) Customer feed radius/proximity selector (0.5/1/3/5/10km+)
+  3) Merchant onboarding map picker with "Use my GPS" button
+  4) Backend /api/deals radius filtering via max_km
+
+backend:
+  - task: "Radius filtering on GET /api/deals (max_km param)"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Verified server.py already filters deals by max_km when lat/lng provided (line 727-731). Need testing agent to confirm behaviour with lat/lng/max_km combos."
+  - task: "Mock OTP auth flow (request+verify)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Existing endpoint POST /api/auth/otp/request returns {sent:true, demo_code:'123456'}. POST /api/auth/otp/verify with 123456 must return JWT. Re-test to ensure no regressions after frontend changes."
+
+frontend:
+  - task: "Customer sign-up Phone/Email tab switch"
+    implemented: true
+    working: true
+    file: "frontend/app/sign-up.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Screenshot verified tabs render correctly with default 'Phone' selected; email tab reveals email/password fields."
+  - task: "Merchant sign-up Phone/Email tab switch"
+    implemented: true
+    working: true
+    file: "frontend/app/merchant/sign-up.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Screenshot verified merchant sign-up renders Phone/Email tabs with role='merchant' passed to PhoneAuthTab."
+  - task: "Customer feed radius/proximity selector"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Screenshot verified filter panel shows 0.5km/1km/3km/5km/10km+ options and passes max_km to /api/deals. Needs UI test to confirm deals count changes when selecting smaller radius."
+  - task: "Merchant onboarding map picker 'Use my GPS' button"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/merchant/onboarding.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added GPS button inside map picker modal. Uses expo-location on native and navigator.geolocation on web. Needs UI verification after sign-in as merchant."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.1"
+  test_sequence: 8
+  run_ui: true
+
+test_plan:
+  current_focus:
+    - "Radius filtering on GET /api/deals (max_km param)"
+    - "Customer feed radius/proximity selector"
+    - "Merchant onboarding map picker 'Use my GPS' button"
+    - "Mock OTP auth flow (request+verify)"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Verified UI for sign-up tabs + radius selector via screenshot. Added GPS button to merchant map picker.
+      Please test:
+      1) Backend: GET /api/deals?lat=37.7749&lng=-122.4194&max_km=1 returns fewer/no deals vs max_km=999.
+      2) Backend: OTP flow request+verify still returns valid JWT (regression check).
+      3) Frontend: Customer feed radius filter reduces visible deals when set to 0.5km, expands with 10km+.
+      4) Frontend: Sign-up tabs (both customer and merchant) can switch between Phone and Email and OTP=123456 successfully authenticates a phone-only user.
+  - agent: "testing"
+    message: |
+      Iteration 8: Backend 9/9 pass. Frontend HIGH bug: PhoneAuthTab wrote JWT to storage without updating AuthContext, so /merchant/onboarding kicked user to /sign-in. Fix required.
+  - agent: "main"
+    message: |
+      Fixed: added AuthContext.setSession(token, user) and made refresh() fall back to reading token from secure storage. PhoneAuthTab now calls setSession before onSuccess.
+  - agent: "testing"
+    message: |
+      Iteration 9: 4/4 frontend pass. Merchant OTP → /merchant/onboarding, customer OTP populates user, email flows still working. No new issues.

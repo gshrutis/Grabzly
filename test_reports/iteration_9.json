@@ -1,0 +1,45 @@
+{
+  "summary": "Regression re-test after AuthContext + PhoneAuthTab fix — ALL 4 requested flows PASS. (1) Merchant phone OTP (+919876543211 / Merchant Tester / 123456) correctly lands on /merchant/onboarding (screenshot confirms step 1 'Business info' rendered) — previously redirected to /sign-in. (2) Customer phone OTP (+919876543212 / Cust Tester / 123456) — useAuth().user is populated: profile-name testID renders 'Cust Tester'. (3) Profile tab shows signed-in user name after both OTP and email flows, proving AuthContext.setSession propagates state. (4) Email sign-up + email sign-in regressions clean (profile-name shows 'Email Reg' and 'SI Regr' respectively). Only lingering console noise: previously-reported deprecated shadow* / pointerEvents warnings — not introduced by this fix.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "shadow* styles (theme.ts)",
+        "issue": "Console warning still present: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Emitted on every screen. Reference: /app/frontend/src/theme.ts (shadow.cardStrong etc.). Pre-existing from iteration 8, not caused by this fix."
+      },
+      {
+        "component": "pointerEvents prop",
+        "issue": "Console warning still present: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Pre-existing from iteration 8, not caused by this fix."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_9.json"
+  ],
+  "action_items": [
+    "OPTIONAL: Migrate `shadow*` style tokens in /app/frontend/src/theme.ts to `boxShadow` for RN Web to remove console warning.",
+    "OPTIONAL: Grep for `pointerEvents=` in /app/frontend and move to `style={{pointerEvents:'none'}}`.",
+    "OPTIONAL (code review, iteration 8 carry-over): merchant/onboarding.tsx useEffect at line 87 redirects on `!user` without awaiting `loading` from useAuth() — no longer triggered by OTP flow (fix works) but still a subtle race for cold-loads."
+  ],
+  "critical_code_review_comments": [
+    "AuthContext.setSession implementation is clean: writes secure storage first, then syncs token+user state, then memoized in context — no race with downstream consumers.",
+    "AuthContext.refresh now falls back to secure storage if in-memory token missing — good hedge but the primary path via setSession already covers PhoneAuthTab. Consider dropping the fallback later if not needed elsewhere.",
+    "PhoneAuthTab correctly awaits setSession before calling onSuccess, so downstream navigation guards (e.g. merchant/onboarding useEffect) see a populated user."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (not retested per request; iteration 8 = 100%)",
+    "frontend": "100% (4/4 flows: merchant OTP, customer OTP, profile-name populated, email sign-up + sign-in regressions)"
+  },
+  "seed_data_creation": "Test users created via the flows: phone +919876543211 (Merchant Tester), +919876543212 (Cust Tester), and 2 email users (regtest_*/emailreg_*/si_regr_*@example.com). Safe to leave in database.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "AuthContext setSession fix is fully validated. If future tests hit /sign-up or /sign-in via direct navigation, note that router.back() will emit a 'GO_BACK not handled' warning because there is no history — this is a test-harness artifact, not a bug. Use profile-name testID to assert authenticated state after any auth flow.",
+  "rca_of_issue": "N/A — fix from iteration 8 RCA applied and verified working end-to-end."
+}

@@ -3,8 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator 
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { api } from "@/src/api/client";
-import { storage } from "@/src/utils/storage";
-import { TOKEN_KEY } from "@/src/api/client";
+import { useAuth } from "@/src/context/auth";
 import { colors, radius, spacing, shadow } from "@/src/theme";
 
 type Props = {
@@ -18,6 +17,7 @@ type Props = {
  * from /api/auth/otp/request (demo_code field). We autofill for testing.
  */
 export default function PhoneAuthTab({ onSuccess, role: _role = "customer" }: Props) {
+  const { setSession } = useAuth();
   const [step, setStep] = useState<"phone" | "code">("phone");
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
@@ -53,7 +53,7 @@ export default function PhoneAuthTab({ onSuccess, role: _role = "customer" }: Pr
     setLoading(true);
     try {
       const res = await api.otpVerify(phone.trim(), code.trim(), name.trim() || undefined);
-      await storage.secureSet(TOKEN_KEY, res.access_token);
+      await setSession(res.access_token, res.user);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       await onSuccess(res.user);
     } catch (e: any) {

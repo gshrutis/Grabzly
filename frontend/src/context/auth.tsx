@@ -18,6 +18,7 @@ type AuthContextValue = {
   signUp: (email: string, password: string, name: string, referral_code?: string) => Promise<void>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
+  setSession: (token: string, user: User) => Promise<void>;
 };
 
 const AuthCtx = createContext<AuthContextValue | null>(null);
@@ -65,16 +66,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!token) return;
+    // Read latest token from secure storage in case an out-of-band flow (e.g. OTP)
+    // wrote a token but didn't call setSession. Falls back to the in-memory token.
+    let activeToken = token;
+    if (!activeToken) {
+      const stored = await storage.secureGet<string>(TOKEN_KEY, "");
+      if (stored) {
+        activeToken = stored;
+        setToken(stored);
+      }
+    }
+    if (!activeToken) return;
     try {
       const me = await api.me();
       setUser(me as User);
     } catch {}
   }, [token]);
 
+  const setSession = useCallback(async (nextToken: string, nextUser: User) => {
+    await storage.secureSet(TOKEN_KEY, nextToken);
+    setToken(nextToken);
+    setUser(nextUser);
+  }, []);
+
   const value = useMemo(
-    () => ({ user, token, loading, signIn, signUp, signOut, refresh }),
-    [user, token, loading, signIn, signUp, signOut, refresh],
+    () => ({ user, token, loading, signIn, signUp, signOut, refresh, setSession }),
+    [user, token, loading, signIn, signUp, signOut, refresh, setSession],
   );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

@@ -1,0 +1,68 @@
+{
+  "summary": "Iteration 8 targeted regression: 9/9 backend tests pass (radius filter + mock OTP). Frontend: customer sign-up tabs & phone OTP flow verified. Feed radius selector works end-to-end (24 deals @999km -> 14 deals @0.5km with max_km=0.5 in API call). Merchant onboarding 'Use my GPS' button (mo-use-gps) present and tappable without crash. CRITICAL REGRESSION found on merchant phone OTP flow: after successful OTP verify, user is redirected to /sign-in instead of /merchant/onboarding because PhoneAuthTab writes token only to secure storage and never syncs it into the AuthContext state, so useAuth().user remains null. Deprecated React Native web warnings detected (shadow* props, pointerEvents prop).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "PhoneAuthTab -> merchant/sign-up navigation",
+        "issue": "After phone OTP verify, merchant is redirected to /sign-in instead of /merchant/onboarding. Root cause: PhoneAuthTab stores access_token in secure storage but never updates AuthContext (setToken/setUser). refresh() early-returns because context token state is null. /merchant/onboarding useEffect sees !user and kicks user to /sign-in.",
+        "testID": "verify-otp-btn",
+        "priority": "HIGH"
+      },
+      {
+        "component": "PhoneAuthTab -> customer sign-up navigation",
+        "issue": "Same root cause affects customer sign-up: OTP verify succeeds and JWT returned, but AuthContext user stays null. router.back() (or returnTo) still fires so page changes, but downstream screens that read useAuth().user will treat user as unauthenticated until app reload rehydrates from storage.",
+        "testID": "verify-otp-btn",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Merchant phone OTP -> onboarding",
+        "issue": "OTP verify returns 200 with JWT, secure storage is updated, but AuthContext is not, so the guard in /merchant/onboarding redirects to /sign-in immediately.",
+        "affected_testIDs": ["msu-mode-phone", "send-otp-btn", "verify-otp-btn"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "shadow* styles (multiple screens)",
+        "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Emitted on sign-up, merchant sign-up, and other screens using src/theme shadow tokens. Reference: /app/frontend/src/theme.ts (shadow.cardStrong etc.) used across sign-up.tsx, merchant/sign-up.tsx, PhoneAuthTab.tsx."
+      },
+      {
+        "component": "pointerEvents prop",
+        "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Likely emitted from a View using pointerEvents='none' as prop. Search codebase and migrate to style={{pointerEvents: 'none'}}."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter8_radius_otp.py",
+    "/app/test_reports/pytest/iteration_8.xml"
+  ],
+  "action_items": [
+    "FIX (HIGH): PhoneAuthTab must update AuthContext, not just secure storage. Options: (a) add a `setSession(token, user)` helper on AuthContext and call it from PhoneAuthTab before onSuccess; (b) make refresh() re-read token from secure storage when internal token is null; (c) inject useAuth() into PhoneAuthTab and setToken/setUser directly.",
+    "VERIFY: After the fix, retest merchant OTP flow lands on /merchant/onboarding, and customer OTP flow honors returnTo with user actually authenticated (call /api/auth/me afterwards).",
+    "MIGRATE: Replace deprecated `shadow*` React Native web style props with `boxShadow` in src/theme.ts (or the shadow helper).",
+    "MIGRATE: Move `pointerEvents` from prop to style across screens (grep for `pointerEvents=` in /app/frontend)."
+  ],
+  "critical_code_review_comments": [
+    "auth.tsx refresh() early-returns on `!token` — safer to re-read from secure storage if state token missing, so page reload/refresh can recover session.",
+    "PhoneAuthTab has role prop but ignores it — server currently ignores role too; if you want merchant OTP signup to actually mark the user as merchant, either send role in the /api/auth/otp/verify body or immediately call /api/merchant/onboard after verify.",
+    "merchant/onboarding.tsx useEffect at line 87 redirects immediately on `!user` before AuthContext has hydrated — consider awaiting `loading` from useAuth() to avoid false-negative redirects."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter8_radius_otp.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9)",
+    "frontend": "60% (3/5 flows fully green — customer OTP navigates but AuthContext stale; merchant OTP redirects to /sign-in)"
+  },
+  "seed_data_creation": "No new seed. Backend auto-seeds SF deals on startup. Test users created via OTP with phone +919876543210, +919000000123, +919555000777 and via email merchXXX@test.com — safe to leave in test_database.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "After the AuthContext fix lands, retest: (1) POST OTP verify on both /sign-up and /merchant/sign-up, assert (a) router replaces to expected route, (b) /api/auth/me with the returned token returns the same user, (c) useAuth().user is non-null on the destination screen (verify by e.g. presence of a profile-linked testID). Also retest that customer feed still reduces deals when radius=0.5km. Feed radius selector, merchant email signup path, and GPS button already verified in this iteration.",
+  "rca_of_issue": "PhoneAuthTab.tsx line 55-58 calls storage.secureSet(TOKEN_KEY, res.access_token) then invokes onSuccess(). It never notifies AuthContext. AuthContext.refresh() at auth.tsx line 67-73 short-circuits with `if (!token) return;` so it cannot fetch /api/auth/me. Consequently useAuth().user stays null. In sign-up.tsx (line 100-104) after onSuccess we call `await refresh()` then router.replace(returnTo) — refresh no-ops, and destination screen sees user=null. In merchant/sign-up.tsx (line 100-103) the same happens and merchant/onboarding.tsx line 87 immediately router.replaces to /sign-in. Reproduction: navigate to /merchant/sign-up, phone tab, enter +919555000777 + name, tap Send OTP, enter 123456, tap Verify — final URL is /sign-in (should be /merchant/onboarding). Mitigation: expose `setSession(token, user)` on AuthContext and call it inside PhoneAuthTab.verifyOtp before onSuccess."
+}

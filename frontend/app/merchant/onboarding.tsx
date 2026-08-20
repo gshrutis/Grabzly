@@ -11,6 +11,7 @@ import * as Haptics from "expo-haptics";
 import { api } from "@/src/api/client";
 import { useAuth } from "@/src/context/auth";
 import { useLocation } from "@/src/context/location";
+import * as Location from "expo-location";
 import { CATEGORY_META, colors, radius, spacing, shadow } from "@/src/theme";
 import LeafletMap from "@/src/components/LeafletMap";
 
@@ -20,7 +21,39 @@ export default function MerchantOnboarding() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, refresh } = useAuth();
-  const { loc } = useLocation();
+  const { loc, requestPermission } = useLocation();
+  const [locating, setLocating] = useState(false);
+
+  const useMyGps = async () => {
+    setLocating(true);
+    try {
+      // Try to use device permission via context first (updates global loc as well)
+      const ok = await requestPermission();
+      if (ok) {
+        // Grab a fresh reading (context may still be updating async)
+        try {
+          if (Platform.OS !== "web") {
+            const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            setLat(pos.coords.latitude);
+            setLng(pos.coords.longitude);
+          } else if (typeof navigator !== "undefined" && (navigator as any).geolocation) {
+            await new Promise<void>((resolve) => {
+              (navigator as any).geolocation.getCurrentPosition(
+                (p: any) => { setLat(p.coords.latitude); setLng(p.coords.longitude); resolve(); },
+                () => resolve(),
+                { timeout: 8000 },
+              );
+            });
+          }
+        } catch {}
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      } else {
+        setError("Could not access GPS. Enable location permission and try again.");
+      }
+    } finally {
+      setLocating(false);
+    }
+  };
 
   const [step, setStep] = useState<Step>(1);
   const [saving, setSaving] = useState(false);
@@ -385,6 +418,22 @@ export default function MerchantOnboarding() {
               </TouchableOpacity>
             </View>
             <Text style={styles.mapSub}>Current pin: {lat.toFixed(4)}, {lng.toFixed(4)}</Text>
+            <TouchableOpacity
+              testID="mo-use-gps"
+              style={styles.gpsBtn}
+              onPress={useMyGps}
+              disabled={locating}
+              activeOpacity={0.85}
+            >
+              {locating ? (
+                <ActivityIndicator size="small" color={colors.brand} />
+              ) : (
+                <>
+                  <Ionicons name="locate" size={16} color={colors.brand} />
+                  <Text style={styles.gpsBtnText}>Use my GPS location</Text>
+                </>
+              )}
+            </TouchableOpacity>
             <View style={{ flex: 1, marginTop: spacing.md, borderRadius: radius.lg, overflow: "hidden" }}>
               <LeafletMap
                 center={{ lat, lng }}
@@ -490,6 +539,21 @@ const styles = StyleSheet.create({
   mapHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   mapTitle: { flex: 1, fontSize: 16, fontWeight: "800", color: colors.onSurface },
   mapSub: { fontSize: 12, color: colors.muted, marginTop: 4, fontWeight: "700" },
+  gpsBtn: {
+    marginTop: spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    backgroundColor: colors.brandTertiary,
+    borderWidth: 1,
+    borderColor: colors.brandSecondary,
+  },
+  gpsBtnText: { fontSize: 13, fontWeight: "800", color: colors.brand },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {
     flexDirection: "row", alignItems: "center", gap: 6,
