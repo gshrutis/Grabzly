@@ -122,6 +122,38 @@ def new_referral_code() -> str:
 
 
 # =========================================================================
+# NOTIFICATIONS
+# =========================================================================
+async def add_notification(
+    user_id: str,
+    type_: str,
+    title: str,
+    body: str,
+    meta: Optional[Dict[str, Any]] = None,
+):
+    """Persist an in-app notification for a user. Silent no-op if user_id is falsy."""
+    if not user_id:
+        return
+    await db.notifications.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "type": type_,
+        "title": title,
+        "body": body,
+        "meta": meta or {},
+        "read": False,
+        "created_at": iso(now_utc()),
+    })
+
+
+async def merchant_owner_id(merchant_id: str) -> Optional[str]:
+    m = await db.merchants.find_one({"id": merchant_id}, {"_id": 0, "owner_id": 1})
+    if m:
+        return m.get("owner_id")
+    return None
+
+
+# =========================================================================
 # MODELS
 # =========================================================================
 class RegisterIn(BaseModel):
@@ -402,6 +434,52 @@ async def update_me(body: UpdateProfileIn, user=Depends(get_current_user)):
         await db.users.update_one({"id": user["id"]}, {"$set": updates})
     updated = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
     return _public_user(updated)
+
+
+# =========================================================================
+# NOTIFICATIONS (in-app)
+# =========================================================================
+@api.get("/notifications")
+async def list_notifications(user=Depends(get_current_user), limit: int = 50):
+    limit = max(1, min(limit, 200))
+    items = await db.notifications.find(
+        {"user_id": user["id"]}, {"_id": 0},
+    ).sort("created_at", -1).to_list(limit)
+    return items
+
+
+@api.get("/notifications/unread-count")
+async def unread_count(user=Depends(get_current_user)):
+    count = await db.notifications.count_documents({"user_id": user["id"], "read": False})
+    return {"count": count}
+
+
+@api.post("/notifications/{notif_id}/read")
+async def mark_notification_read(notif_id: str, user=Depends(get_current_user)):
+    res = await db.notifications.update_one(
+        {"id": notif_id, "user_id": user["id"]},
+        {"$set": {"read": True}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"read": True}
+
+
+@api.post("/notifications/read-all")
+async def mark_all_read(user=Depends(get_current_user)):
+    res = await db.notifications.update_many(
+        {"user_id": user["id"], "read": False},
+        {"$set": {"read": True}},
+    )
+    return {"updated": res.modified_count}
+
+
+@api.delete("/notifications/{notif_id}")
+async def delete_notification(notif_id: str, user=Depends(get_current_user)):
+    res = await db.notifications.delete_one({"id": notif_id, "user_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"deleted": True}
 
 
 # =========================================================================
@@ -863,6 +941,23 @@ async def claim_deal(deal_id: str, user=Depends(get_current_user)):
         "user_id": user["id"],
         "created_at": iso(now),
     })
+    # In-app notifications for both parties
+    await add_notification(
+        user["id"],
+        "claim_created",
+        "Deal claimed 🎉",
+        f"Show your QR code at {deal.get('merchant_name') or 'the store'} to redeem \"{deal['title']}\".",
+        {"claim_id": claim_id, "deal_id": deal_id, "merchant_id": deal["merchant_id"]},
+    )
+    owner_id = await merchant_owner_id(deal["merchant_id"])
+    if owner_id:
+        await add_notification(
+            owner_id,
+            "claim_received",
+            "New claim on your deal",
+            f"{user.get('name') or 'A customer'} just claimed \"{deal['title']}\". They\u2019ll arrive within 60 min.",
+            {"claim_id": claim_id, "deal_id": deal_id, "user_id": user["id"]},
+        )
     claim_doc.pop("_id", None)
     return claim_doc
 
@@ -1037,6 +1132,22 @@ async def merchant_redeem(body: RedeemIn, user=Depends(get_current_merchant)):
         "user_id": customer_id,
         "created_at": iso(now),
     })
+
+    # In-app notifications for both parties
+    await add_notification(
+        customer_id,
+        "redemption_confirmed",
+        "Redemption confirmed ✅",
+        f"You earned +{total_delta} pts at {claim.get('merchant_name') or 'the store'} for \"{claim.get('deal_title')}\".",
+        {"claim_id": claim["id"], "deal_id": claim["deal_id"], "points": total_delta},
+    )
+    await add_notification(
+        user["id"],
+        "redemption_completed",
+        "Redemption completed",
+        f"You just redeemed \"{claim.get('deal_title')}\" for {claim.get('user_name') or 'a customer'}.",
+        {"claim_id": claim["id"], "deal_id": claim["deal_id"], "user_id": customer_id},
+    )
 
     updated = await db.claims.find_one({"id": claim["id"]}, {"_id": 0})
     return {"claim": updated, "points_awarded": total_delta}

@@ -68,10 +68,10 @@ export const shadow = {
 };
 
 export const CATEGORY_META: Record<string, { icon: string; color: string; label: string }> = {
-  food: { icon: "restaurant", color: "#FF5A36", label: "Food" },
+  food: { icon: "restaurant", color: "#E82C2C", label: "Food" },
+  cafe: { icon: "cafe", color: "#FF8A00", label: "Cafe" },
+  bakery: { icon: "pizza", color: "#F5B300", label: "Bakery" },
   grocery: { icon: "leaf", color: "#05A660", label: "Grocery" },
   clothing: { icon: "shirt", color: "#2BB8D6", label: "Clothing" },
-  kitchenware: { icon: "cafe", color: "#E59200", label: "Kitchenware" },
-  cafe: { icon: "cafe", color: "#8B4513", label: "Cafe" },
-  bakery: { icon: "pizza", color: "#D2691E", label: "Bakery" },
+  kitchenware: { icon: "cafe", color: "#8B4FEF", label: "Kitchenware" },
 };

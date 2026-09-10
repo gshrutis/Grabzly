@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Platform, Modal,
+  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -11,9 +11,8 @@ import * as Haptics from "expo-haptics";
 import { api } from "@/src/api/client";
 import { useAuth } from "@/src/context/auth";
 import { useLocation } from "@/src/context/location";
-import * as Location from "expo-location";
+import LocationPickerModal from "@/src/components/LocationPickerModal";
 import { CATEGORY_META, colors, radius, spacing, shadow } from "@/src/theme";
-import LeafletMap from "@/src/components/LeafletMap";
 
 type Step = 1 | 2 | 3;
 
@@ -21,39 +20,7 @@ export default function MerchantOnboarding() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, refresh } = useAuth();
-  const { loc, requestPermission } = useLocation();
-  const [locating, setLocating] = useState(false);
-
-  const useMyGps = async () => {
-    setLocating(true);
-    try {
-      // Try to use device permission via context first (updates global loc as well)
-      const ok = await requestPermission();
-      if (ok) {
-        // Grab a fresh reading (context may still be updating async)
-        try {
-          if (Platform.OS !== "web") {
-            const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-            setLat(pos.coords.latitude);
-            setLng(pos.coords.longitude);
-          } else if (typeof navigator !== "undefined" && (navigator as any).geolocation) {
-            await new Promise<void>((resolve) => {
-              (navigator as any).geolocation.getCurrentPosition(
-                (p: any) => { setLat(p.coords.latitude); setLng(p.coords.longitude); resolve(); },
-                () => resolve(),
-                { timeout: 8000 },
-              );
-            });
-          }
-        } catch {}
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      } else {
-        setError("Could not access GPS. Enable location permission and try again.");
-      }
-    } finally {
-      setLocating(false);
-    }
-  };
+  const { loc } = useLocation();
 
   const [step, setStep] = useState<Step>(1);
   const [saving, setSaving] = useState(false);
@@ -408,54 +375,22 @@ export default function MerchantOnboarding() {
       </View>
 
       {/* Map picker modal */}
-      <Modal transparent animationType="slide" visible={showMap} onRequestClose={() => setShowMap(false)}>
-        <View style={styles.mapOverlay}>
-          <View style={[styles.mapSheet, { paddingBottom: insets.bottom + spacing.lg, paddingTop: insets.top + spacing.md }]}>
-            <View style={styles.mapHeader}>
-              <Text style={styles.mapTitle}>Tap the map to set your store location</Text>
-              <TouchableOpacity onPress={() => setShowMap(false)}>
-                <Ionicons name="close" size={24} color={colors.onSurface} />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.mapSub}>Current pin: {lat.toFixed(4)}, {lng.toFixed(4)}</Text>
-            <TouchableOpacity
-              testID="mo-use-gps"
-              style={styles.gpsBtn}
-              onPress={useMyGps}
-              disabled={locating}
-              activeOpacity={0.85}
-            >
-              {locating ? (
-                <ActivityIndicator size="small" color={colors.brand} />
-              ) : (
-                <>
-                  <Ionicons name="locate" size={16} color={colors.brand} />
-                  <Text style={styles.gpsBtnText}>Use my GPS location</Text>
-                </>
-              )}
-            </TouchableOpacity>
-            <View style={{ flex: 1, marginTop: spacing.md, borderRadius: radius.lg, overflow: "hidden" }}>
-              <LeafletMap
-                center={{ lat, lng }}
-                zoom={15}
-                tappable
-                showUser
-                onTap={(la, lo) => { setLat(la); setLng(lo); Haptics.selectionAsync().catch(() => {}); }}
-                height="100%"
-              />
-            </View>
-            <TouchableOpacity
-              testID="mo-confirm-pin"
-              style={[styles.primaryBtn, { marginTop: spacing.md }]}
-              onPress={() => setShowMap(false)}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="checkmark" size={18} color={colors.white} />
-              <Text style={styles.primaryBtnText}>Confirm location</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <LocationPickerModal
+        visible={showMap}
+        onClose={() => setShowMap(false)}
+        onConfirm={(picked) => {
+          setLat(picked.lat);
+          setLng(picked.lng);
+          if (picked.label && (!address || address.length < 5)) {
+            setAddress(picked.label);
+          }
+          setShowMap(false);
+        }}
+        initialLat={lat}
+        initialLng={lng}
+        initialLabel={address}
+        title="Set your store location"
+      />
     </View>
   );
 }
@@ -534,26 +469,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandTertiary,
   },
   pickMapBtnText: { color: colors.brand, fontSize: 12, fontWeight: "800" },
-  mapOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)" },
-  mapSheet: { flex: 1, backgroundColor: colors.surface, padding: spacing.lg },
-  mapHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  mapTitle: { flex: 1, fontSize: 16, fontWeight: "800", color: colors.onSurface },
-  mapSub: { fontSize: 12, color: colors.muted, marginTop: 4, fontWeight: "700" },
-  gpsBtn: {
-    marginTop: spacing.sm,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    alignSelf: "flex-start",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: radius.pill,
-    backgroundColor: colors.brandTertiary,
-    borderWidth: 1,
-    borderColor: colors.brandSecondary,
-  },
-  gpsBtnText: { fontSize: 13, fontWeight: "800", color: colors.brand },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {
     flexDirection: "row", alignItems: "center", gap: 6,

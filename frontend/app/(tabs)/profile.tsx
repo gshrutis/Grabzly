@@ -12,12 +12,13 @@ import { useAuth } from "@/src/context/auth";
 import { useLocation } from "@/src/context/location";
 import { api } from "@/src/api/client";
 import { CATEGORY_META, colors, radius, spacing, shadow } from "@/src/theme";
+import LocationPickerModal from "@/src/components/LocationPickerModal";
 
 export default function Profile() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, signOut, refresh } = useAuth();
-  const { loc, granted, requestPermission } = useLocation();
+  const { loc } = useLocation();
   const [cats, setCats] = useState<any[]>([]);
   const [preferred, setPreferred] = useState<Set<string>>(new Set());
   const [notifDeals, setNotifDeals] = useState(true);
@@ -87,6 +88,7 @@ export default function Profile() {
   };
 
   const [showLocPicker, setShowLocPicker] = useState(false);
+  const [showPreciseLocPicker, setShowPreciseLocPicker] = useState(false);
   const { setManual } = useLocation();
 
   const pickCity = async (city: { name: string; lat: number; lng: number }) => {
@@ -237,23 +239,23 @@ export default function Profile() {
             </View>
           </View>
           <View style={styles.locBtnRow}>
-            {!granted && (
-              <TouchableOpacity
-                testID="enable-loc-in-profile"
-                style={styles.inlineBtn}
-                onPress={requestPermission}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.inlineBtnText}>Use precise GPS</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              testID="pick-precise-location-btn"
+              style={styles.inlineBtn}
+              onPress={() => setShowPreciseLocPicker(true)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="locate" size={13} color={colors.brand} />
+              <Text style={styles.inlineBtnText}>Pick precise location</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               testID="change-location-btn"
               style={[styles.inlineBtn, { backgroundColor: colors.info }]}
               onPress={() => setShowLocPicker(true)}
               activeOpacity={0.85}
             >
-              <Text style={[styles.inlineBtnText, { color: colors.white }]}>Change city</Text>
+              <Ionicons name="business" size={13} color={colors.white} />
+              <Text style={[styles.inlineBtnText, { color: colors.white }]}>Quick city switch</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -290,13 +292,24 @@ export default function Profile() {
       {/* NOTIFICATIONS */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Notifications</Text>
-        <View style={styles.card}>
+        {!user && (
+          <TouchableOpacity
+            testID="notif-signin-hint"
+            onPress={() => router.push("/sign-in")}
+            activeOpacity={0.85}
+            style={styles.notifGuestBanner}
+          >
+            <Ionicons name="lock-closed" size={14} color={colors.info} />
+            <Text style={styles.notifGuestText}>Sign in to enable</Text>
+          </TouchableOpacity>
+        )}
+        <View style={[styles.card, !user && styles.cardDisabled, !user && { pointerEvents: "none" }]}>
           <View style={styles.rowBetween}>
             <View style={{ flex: 1 }}>
               <Text style={styles.rowTitle}>Nearby new deals</Text>
               <Text style={styles.rowSubtitle}>Alert when merchants nearby post a hot offer.</Text>
             </View>
-            <Switch value={notifDeals} onValueChange={setNotifDeals} trackColor={{ true: colors.brand }} />
+            <Switch value={user ? notifDeals : false} onValueChange={setNotifDeals} disabled={!user} trackColor={{ true: colors.brand }} />
           </View>
           <View style={styles.divider} />
           <View style={styles.rowBetween}>
@@ -304,7 +317,7 @@ export default function Profile() {
               <Text style={styles.rowTitle}>Expiring-soon reminders</Text>
               <Text style={styles.rowSubtitle}>Get pinged 15 & 5 minutes before your claim expires.</Text>
             </View>
-            <Switch value={notifExpiring} onValueChange={setNotifExpiring} trackColor={{ true: colors.brand }} />
+            <Switch value={user ? notifExpiring : false} onValueChange={setNotifExpiring} disabled={!user} trackColor={{ true: colors.brand }} />
           </View>
           <View style={styles.divider} />
           <View style={styles.rowBetween}>
@@ -312,7 +325,7 @@ export default function Profile() {
               <Text style={styles.rowTitle}>Followed merchants</Text>
               <Text style={styles.rowSubtitle}>Get notified when merchants you follow post deals.</Text>
             </View>
-            <Switch value={notifFollowed} onValueChange={setNotifFollowed} trackColor={{ true: colors.brand }} />
+            <Switch value={user ? notifFollowed : false} onValueChange={setNotifFollowed} disabled={!user} trackColor={{ true: colors.brand }} />
           </View>
           <View style={styles.divider} />
           <View style={styles.rowBetween}>
@@ -320,7 +333,7 @@ export default function Profile() {
               <Text style={styles.rowTitle}>Quiet hours 10pm–8am</Text>
               <Text style={styles.rowSubtitle}>No notifications during your set-and-forget quiet window.</Text>
             </View>
-            <Switch value={quietHours} onValueChange={setQuietHours} trackColor={{ true: colors.brand }} />
+            <Switch value={user ? quietHours : false} onValueChange={setQuietHours} disabled={!user} trackColor={{ true: colors.brand }} />
           </View>
         </View>
       </View>
@@ -397,6 +410,24 @@ export default function Profile() {
           </View>
         </View>
       </Modal>
+
+      {/* Precise Location Picker (search + GPS + pin) */}
+      <LocationPickerModal
+        visible={showPreciseLocPicker}
+        onClose={() => setShowPreciseLocPicker(false)}
+        onConfirm={async (picked) => {
+          await setManual(picked.lat, picked.lng, picked.label);
+          setShowPreciseLocPicker(false);
+          // Optionally re-seed merchants around new anchor for demo continuity
+          try {
+            await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/seed?lat=${picked.lat}&lng=${picked.lng}&force=false`, { method: "POST" });
+          } catch {}
+        }}
+        initialLat={loc.lat}
+        initialLng={loc.lng}
+        initialLabel={loc.label}
+        title="Set precise location"
+      />
     </ScrollView>
   );
 }
@@ -526,6 +557,20 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     ...shadow.card,
   },
+  cardDisabled: {
+    opacity: 0.55,
+  },
+  notifGuestBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: "#E4F1FA",
+  },
+  notifGuestText: { color: colors.info, fontSize: 12, fontWeight: "800" },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   rowBetween: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: 6 },
   rowTitle: { fontSize: 14, fontWeight: "700", color: colors.onSurface },
@@ -534,6 +579,9 @@ const styles = StyleSheet.create({
   inlineBtn: {
     marginTop: spacing.sm,
     alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     paddingHorizontal: 14, paddingVertical: 8,
     borderRadius: radius.pill,
     backgroundColor: colors.brandTertiary,

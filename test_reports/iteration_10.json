@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 10 — Notifications feature: ALL 18 backend tests PASS (serial; parallel runs cause false negatives because both test users share the same claim/redeem fixture). Frontend UI: 5/5 flows PASS. Guest home feed renders feed-notif-bell with no badge crash. /notifications route for guest shows 'Sign in to see your notifications' with a working sign-in button. Profile screen (guest) shows 'Sign in to enable' pill (testID notif-signin-hint) at the top of the Notifications card; switches are disabled and non-interactive (pointerEvents:'none' on the card). Customer map tab renders 37 category-colored pins with 7 unique colors (not all orange) — visually confirmed via screenshot. Merchant onboarding: 'Pick on map' opens the LocationPickerModal with loc-picker-search, loc-picker-gps and loc-picker-confirm all present. Deprecated shadow*/pointerEvents RN-web warnings persist from prior iterations (not new).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "shadow* styles (theme.ts)",
+        "issue": "Console warning persists: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Emitted on every screen. Reference: /app/frontend/src/theme.ts (shadow.card, shadow.cardStrong). Pre-existing from iteration 8/9."
+      },
+      {
+        "component": "pointerEvents prop",
+        "issue": "Console warning persists: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Emitted from NotificationBell.tsx line 53 (View pointerEvents='none' for badge) and possibly other spots. Reference: /app/frontend/src/components/NotificationBell.tsx:53. Pre-existing from iteration 8/9."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter10_notifications.py",
+    "/app/test_reports/pytest/iteration_10.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: Migrate `shadow*` tokens in /app/frontend/src/theme.ts to `boxShadow` for RN-Web (removes recurring console warning).",
+    "OPTIONAL: Move `pointerEvents='none'` from prop to `style={{pointerEvents:'none'}}` in NotificationBell.tsx line 53 and grep for other remaining occurrences.",
+    "OPTIONAL: Nominatim search (loc-picker-search) live path was not exercised in this run because it requires stable public internet from the preview container — best-effort only per the review request. Consider a mock for CI stability."
+  ],
+  "critical_code_review_comments": [
+    "add_notification() correctly no-ops on falsy user_id; the emit-points in claim (server.py:945-960) and redeem (server.py:1137-1150) fire after the DB mutation has already committed, so a notification never runs ahead of the state it references.",
+    "GET /api/notifications lacks pagination beyond a limit query param — fine for MVP but consider skip/before-cursor when history grows.",
+    "Notification `meta` is stored as free-form dict — reasonable given the small set of types, but consider a Literal type union or a Pydantic Notification model for stronger contract.",
+    "merchant_owner_id() reads only owner_id — good; but consider caching in-request if multiple notifications for same merchant are emitted (currently at most 1 per event, so fine).",
+    "NotificationBell renders even for guest users which is a good ergonomic (screen is a soft sign-in gate); refresh() correctly short-circuits when !user, so no unauthorized 401 spam."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter10_notifications.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (18/18 serial)",
+    "frontend": "100% (5/5 flows: feed bell, guest /notifications, guest profile pill+disabled switches, map colored pins, merchant loc-picker)"
+  },
+  "seed_data_creation": "Created 2 phone-OTP users per run (+9111XXXXX customer, +9122XXXXX merchant) plus one merchant profile + one deal + one claim (now redeemed). Additional +9155XXXXX UI merchant. Safe to leave in test_database.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "When running test_iter10_notifications.py, prefer serial execution: `pytest test_iter10_notifications.py -o addopts=` — the module-level fixtures share a single claim across TestClaimRedeemEmit and TestNotificationsBaseline uses the same customer, so pytest-xdist workers see cross-worker state (baseline runs after redeem). Backend logic is correct — parallel-run failures observed were false negatives from ordering. Feed-notif-bell renders on `/(tabs)/` — direct navigation to `/` sometimes takes 5-8s to resolve to the tabs route; use `page.wait_for_selector('[data-testid=\"feed-notif-bell\"]', timeout=10000)`.",
+  "rca_of_issue": "N/A — no bugs found in iteration 10 features."
+}

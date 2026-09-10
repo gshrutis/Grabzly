@@ -152,4 +152,16 @@ export const api = {
 
   // Loyalty
   loyalty: () => request<any>("/loyalty/me", { auth: true }),
+
+  // Notifications (in-app)
+  notifications: (limit = 50) =>
+    request<any[]>("/notifications", { auth: true, query: { limit } }),
+  notificationsUnreadCount: () =>
+    request<{ count: number }>("/notifications/unread-count", { auth: true }),
+  markNotificationRead: (id: string) =>
+    request<any>(`/notifications/${id}/read`, { method: "POST", auth: true }),
+  markAllNotificationsRead: () =>
+    request<any>("/notifications/read-all", { method: "POST", auth: true }),
+  deleteNotification: (id: string) =>
+    request<any>(`/notifications/${id}`, { method: "DELETE", auth: true }),
 };

@@ -12,6 +12,7 @@ import { colors, radius, spacing, shadow } from "@/src/theme";
 import { formatMoney } from "@/src/utils/format";
 import Countdown from "@/src/components/Countdown";
 import EmptyState from "@/src/components/EmptyState";
+import NotificationBell from "@/src/components/NotificationBell";
 
 type Filter = "all" | "active" | "scheduled" | "paused" | "expired" | "drafts";
 
@@ -90,14 +91,17 @@ export default function MerchantDeals() {
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <View style={styles.headerRow}>
           <Text style={styles.title}>My deals</Text>
-          <TouchableOpacity
-            testID="new-deal-btn"
-            style={styles.addBtn}
-            onPress={() => router.push("/merchant/deal-form")}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="add" size={22} color={colors.white} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <NotificationBell testID="merchant-notif-bell" />
+            <TouchableOpacity
+              testID="new-deal-btn"
+              style={styles.addBtn}
+              onPress={() => router.push("/merchant/deal-form")}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="add" size={22} color={colors.white} />
+            </TouchableOpacity>
+          </View>
         </View>
         <ScrollView
           horizontal

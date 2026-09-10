@@ -14,6 +14,7 @@ import CategoryChips from "@/src/components/CategoryChips";
 import DealCard from "@/src/components/DealCard";
 import Countdown from "@/src/components/Countdown";
 import EmptyState from "@/src/components/EmptyState";
+import NotificationBell from "@/src/components/NotificationBell";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -236,6 +237,7 @@ export default function HomeFeed() {
           >
             <Ionicons name="search" size={20} color={colors.onSurface} />
           </TouchableOpacity>
+          <NotificationBell testID="feed-notif-bell" />
           <TouchableOpacity
             testID="filters-toggle-btn"
             style={[styles.iconBtn, showFilters && { backgroundColor: colors.brandTertiary }]}

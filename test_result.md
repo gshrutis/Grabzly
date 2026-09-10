@@ -214,3 +214,57 @@ agent_communication:
   - agent: "testing"
     message: |
       Iteration 9: 4/4 frontend pass. Merchant OTP → /merchant/onboarding, customer OTP populates user, email flows still working. No new issues.
+  - agent: "main"
+    message: |
+      NEW BATCH (iter 10) — 4 features added:
+      1) Backend: In-app notifications collection + endpoints
+         - `GET /api/notifications` (auth) — list latest 50
+         - `GET /api/notifications/unread-count` (auth)
+         - `POST /api/notifications/{id}/read`, `POST /api/notifications/read-all`
+         - `DELETE /api/notifications/{id}`
+         - Auto-emits on `POST /api/deals/{id}/claim` → notifies customer + merchant owner
+         - Auto-emits on `POST /api/merchant/redeem` → notifies customer + merchant owner
+      2) Frontend: Notification bell (with unread badge) added to customer feed header + merchant deals header; new `/notifications` screen with pull-to-refresh + mark-all-read
+      3) Frontend: New reusable `LocationPickerModal` — OSM Nominatim search, GPS, tap-to-pin, live pin preview. Used in:
+         - Merchant onboarding (replaces old map picker modal)
+         - Customer profile → "Pick precise location"
+      4) Frontend: Customer map now uses category-colored pins via updated CATEGORY_META (food=red, cafe=orange, bakery=yellow, grocery=green, clothing=blue, kitchenware=purple). LeafletMap fixed to render <iframe> on web (react-native-webview unsupported on web) so pins actually appear.
+      5) Frontend: Profile Notifications section is fully disabled for guests with a "Sign in to enable" tooltip; Switches read-only, opacity dimmed.
+
+      Please test the new endpoints + flows. Do not re-test iter-9 items (already green).
+
+backend_new:
+  - task: "In-app notifications CRUD"
+    file: "backend/server.py"
+    status: "NA"
+    needs_retesting: true
+  - task: "Claim/Redeem emit notifications to both parties"
+    file: "backend/server.py"
+    status: "NA"
+    needs_retesting: true
+
+frontend_new:
+  - task: "NotificationBell on customer feed + merchant deals header"
+    file: "frontend/src/components/NotificationBell.tsx"
+    status: "NA"
+    needs_retesting: true
+  - task: "/notifications screen (list, mark-all, mark-read tap, deep link)"
+    file: "frontend/app/notifications.tsx"
+    status: "NA"
+    needs_retesting: true
+  - task: "LocationPickerModal (search+GPS+tap) in merchant onboarding + profile"
+    file: "frontend/src/components/LocationPickerModal.tsx"
+    status: "NA"
+    needs_retesting: true
+  - task: "Category-colored map pins in customer map view"
+    file: "frontend/src/components/LeafletMap.tsx + frontend/app/(tabs)/map.tsx + frontend/src/theme.ts"
+    status: "NA"
+    needs_retesting: true
+  - task: "Guest user Notifications section disabled with tooltip"
+    file: "frontend/app/(tabs)/profile.tsx"
+    status: "NA"
+    needs_retesting: true
+
+  - agent: "testing"
+    message: |
+      Iteration 10 — 23/23 pass (18 backend + 5 frontend). Notifications end-to-end verified for both claim and redeem, bell renders on feed + merchant deals, guest UX correct, category-colored map pins confirmed (7 unique colors). Only lingering issue: pre-existing shadow*/pointerEvents deprecation warnings from RN-Web, not blocking.
