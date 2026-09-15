@@ -5,7 +5,7 @@ import {
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@react-native-vector-icons/ionicons";
 import * as Haptics from "expo-haptics";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { storage } from "@/src/utils/storage";

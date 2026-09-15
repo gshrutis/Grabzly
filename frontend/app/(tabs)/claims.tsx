@@ -4,7 +4,7 @@ import {
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@react-native-vector-icons/ionicons";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { api } from "@/src/api/client";

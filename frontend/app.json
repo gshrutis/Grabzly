@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "happyhour",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.emergent.localdealsnow.iyks42",
@@ -23,7 +22,6 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
-      "edgeToEdgeEnabled": true,
       "package": "com.emergent.localdealsnow.iyks42",
       "permissions": [
         "CAMERA",
@@ -65,7 +63,13 @@
           "photosPermission": "Upload store photos and promo videos.",
           "cameraPermission": "Record promo videos from your store."
         }
-      ]
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-secure-store",
+      "expo-status-bar",
+      "expo-web-browser",
+      "@react-native-vector-icons/ionicons"
     ],
     "experiments": {
       "typedRoutes": true

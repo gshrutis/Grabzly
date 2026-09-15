@@ -268,3 +268,9 @@ frontend_new:
   - agent: "testing"
     message: |
       Iteration 10 — 23/23 pass (18 backend + 5 frontend). Notifications end-to-end verified for both claim and redeem, bell renders on feed + merchant deals, guest UX correct, category-colored map pins confirmed (7 unique colors). Only lingering issue: pre-existing shadow*/pointerEvents deprecation warnings from RN-Web, not blocking.
+  - agent: "main"
+    message: |
+      Iteration 11: Upgraded Expo SDK 54.0.36 → 57.0.22 (RN 0.86.3, React 19.2.3). Migrated all `@expo/vector-icons` (Ionicons) → `@react-native-vector-icons/ionicons`. Removed deprecated `newArchEnabled` + `edgeToEdgeEnabled` from app.json. expo-doctor 20/20 pass.
+  - agent: "testing"
+    message: |
+      Iteration 11 — 9/9 smoke pass (4 backend + 5 frontend). App boots on SDK 57, all icons render via new CDN loader, map iframe fallback works, no fatal errors. Only pre-existing shadow*/pointerEvents warnings remain.

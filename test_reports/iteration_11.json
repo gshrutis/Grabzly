@@ -1,0 +1,49 @@
+{
+  "summary": "Iteration 11 — Expo SDK 54 → 57 upgrade smoke test. Backend 4/4 PASS (deals public, OTP request+verify -> JWT, notifications 401 without token, unread-count = 0 with fresh token). Frontend 5/5 PASS on web preview (mobile viewport 375x667): (1) boot page renders 'HappyHour' title + flash icon; (2) /sign-up renders Phone/Email tabs and 5 elements with computed font-family=Ionicons (close, phone-portrait, mail, flash, send) — icons resolved via the jsdelivr CDN loader; (3) /(tabs)/ after 'Browse without location' + 'Skip for now' renders and feed-notif-bell testID is visible; (4) /(tabs)/map renders the Leaflet map in the iframe fallback (leaflet-container found inside <iframe>), 38 marker/circle nodes, category-colored pins visible in the screenshot (red/orange/blue/purple/green/cyan), NO 'React Native WebView does not support this platform' text; (5) /(tabs)/profile guest shows 'Sign in to enable' pill. Zero console errors, zero pageerrors. Only pre-existing deprecation warnings remain ('shadow*' style props, 'pointerEvents' prop) — carried over from iter 10, not caused by the SDK bump. Verified migration is complete: 0 remaining `@expo/vector-icons` imports, 37 files migrated to default import from `@react-native-vector-icons/ionicons`. app.json plugin registered. `newArchEnabled` / `edgeToEdgeEnabled` correctly removed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "shadow* styles (theme.ts)",
+        "issue": "PRE-EXISTING (iter 8/9/10): Console warning '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Emitted on every screen. Not introduced by SDK 57 bump but still present. Reference: /app/frontend/src/theme.ts (shadow.card, shadow.cardStrong)."
+      },
+      {
+        "component": "pointerEvents prop",
+        "issue": "PRE-EXISTING (iter 8/9/10): 'props.pointerEvents is deprecated. Use style.pointerEvents'. Emitted from NotificationBell.tsx line 53 (View pointerEvents='none' for badge). Not introduced by SDK 57 bump. Reference: /app/frontend/src/components/NotificationBell.tsx:53."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter11_sdk57_smoke.py",
+    "/app/test_reports/pytest/iteration_11.xml"
+  ],
+  "action_items": [
+    "NONE for the SDK 57 upgrade itself — the migration is clean, boots without red-box errors, and all core flows work. Only carry-over items from prior iterations remain (optional shadow* / pointerEvents cleanup)."
+  ],
+  "critical_code_review_comments": [
+    "use-icon-fonts.ts correctly gates the CDN sideload behind ExecutionEnvironment.StoreClient (Expo Go); native builds and web fall through to useFonts({}) which resolves immediately. This matches the intent for SDK 57 + @react-native-vector-icons/* config plugin.",
+    "RNVI_IONICONS_VERSION constant (13.1.4) is manually kept in sync with package.json — consider deriving it from require('@react-native-vector-icons/ionicons/package.json').version to prevent drift on next bump.",
+    "app.json plugins array now includes '@react-native-vector-icons/ionicons' — correct for the new package's config plugin. `newArchEnabled` and android.`edgeToEdgeEnabled` are correctly removed (default new-arch is on in SDK 55+; edge-to-edge is enforced on Android 15+ automatically).",
+    "package.json versions are aligned with SDK 57 (expo-* @ ~57.0.*, RN 0.86.3, React 19.2.3, react-native-web 0.21.2). No mixed SDK peers observed.",
+    "37 source files use the new `import Ionicons from '@react-native-vector-icons/ionicons'` default import — zero residual `@expo/vector-icons` imports across app/ and src/."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter11_sdk57_smoke.py (new)",
+    "/app/test_reports/pytest/iteration_11.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (4/4)",
+    "frontend": "100% (5/5 smoke checks)"
+  },
+  "seed_data_creation": "OTP phone user +919876543299 (auto-created on first OTP verify). Safe to leave.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run backend tests SERIALLY: `pytest backend/tests/test_iter11_sdk57_smoke.py -p no:xdist -o addopts=` — the OTP token is stashed on pytest module attr between TestOtpAuth and TestNotificationsGating, which does not survive xdist worker splits. For the frontend, the map screen uses an <iframe> fallback on web; when asserting Leaflet DOM, walk into iframe.contentDocument (see script pattern used in iteration_11).",
+  "rca_of_issue": "N/A — SDK 57 upgrade is functioning correctly, no regressions found."
+}

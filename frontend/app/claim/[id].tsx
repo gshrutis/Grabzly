@@ -4,7 +4,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@react-native-vector-icons/ionicons";
 import { Image } from "expo-image";
 import QRCode from "react-native-qrcode-svg";
 import * as Haptics from "expo-haptics";
