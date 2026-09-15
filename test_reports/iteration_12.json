@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 12 — Backend media upload + media hygiene tests. 7/7 PASS, 1 skipped-by-design. (1) POST /api/upload: no-token=401, valid jpeg=200 with /api/media/<uuid>.jpg + GET returns byte-exact same content, valid mp4=200 with .mp4 suffix + GET byte-exact, text/plain=400 'Unsupported content-type'. (2) GET /api/deals: 0 deals with commondatastorage video_url, 0 deals with file:// video_url, 0 deals with file:// image_url — migration verified clean. (3) GET /api/sample-videos: returns 9 items, all HTTPS, zero commondatastorage — {exoplayer-test-media-0/BigBuckBunny (1), pexels (7), samplelib (1)}. (4) Regression claim+redeem happy path with 2 phone-OTP users (+911234567890 customer, +911234567891 merchant onboarded to 'IT12 Test Cafe'): all four notifications emitted correctly — customer receives claim_created + redemption_confirmed, merchant receives claim_received + redemption_completed, points_awarded=25.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter12_upload_media.py",
+    "/app/test_reports/pytest/iteration_12.xml"
+  ],
+  "action_items": [
+    "None. All iter-12 backend criteria satisfied. Optional: main agent may want to also protect the /api/media static mount from directory-listing (StaticFiles has html=False by default so this is fine, but worth noting)."
+  ],
+  "critical_code_review_comments": [
+    "server.py:1514 /api/upload correctly requires auth via Depends(get_current_user) and streams uploads in 1 MiB chunks — no full-file buffering. 25 MB cap enforced mid-stream with dest.unlink() cleanup on overflow. Good.",
+    "server.py:1520 filename extension is taken from the client-provided upload filename first, then falls back to a MIME-derived extension map. This is safe because storage uses uuid4().hex + ext (no path traversal risk).",
+    "server.py:43 `app.mount('/api/media', StaticFiles(directory=MEDIA_DIR))` is mounted on the FastAPI `app` (not `api` router) so ingress /api prefix stripping still lands correctly. Verified reachable at BASE_URL/api/media/<file>.",
+    "server.py:1548 response returns relative URL '/api/media/<file>' — frontend must prefix with EXPO_PUBLIC_BACKEND_URL when rendering into <Image>/<Video>. Confirm client.ts uploadMedia helper is doing that concatenation (not tested in this backend-only pass).",
+    "SAMPLE_VIDEOS array (server.py:1485) now uses reachable hosts. Consider adding a lightweight startup HEAD probe or a scheduled sweep to catch future host-side 403s early.",
+    "MAX_UPLOAD_MB=25 is a magic number — fine for now; hoisting into .env would let ops adjust without a redeploy."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter12_upload_media.py (new)",
+    "/app/test_reports/pytest/iteration_12.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (7/7 executed, 1 skipped by design)",
+    "frontend": "not tested — request was backend-only"
+  },
+  "seed_data_creation": "Two OTP phone users created (+911234567890 'IT12 Alice' customer, +911234567891 'IT12 Bob' merchant) + one merchant 'IT12 Test Cafe' + one deal that is then soft-deleted at the end of the regression test. Two small media files (~1 KB jpg, ~2 KB mp4) uploaded to /app/backend/media/ per test run — safe to leave, they are static-served orphans.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run backend tests SERIALLY: `pytest backend/tests/test_iter12_upload_media.py -p no:xdist -o addopts=`. Env var used is EXPO_PUBLIC_BACKEND_URL (falls back to EXPO_BACKEND_URL). Note that /api/media/* is served from the FastAPI `app.mount` (not the `api` router), and the ingress strips /api before routing — this still works because the mount path itself starts with /api. For future upload assertions, we upload with explicit content_type in the multipart tuple; do NOT rely on Path(filename).suffix alone because the server prefers extension from filename over MIME.",
+  "rca_of_issue": "N/A — no bugs found. Iteration 12 fixes verified: (a) 403-returning commondatastorage URLs are gone from both /api/deals and /api/sample-videos, (b) file:// URIs are gone from all deal image_url/video_url fields (clean_media.py migration ran successfully), (c) the new /api/upload endpoint correctly authenticates, validates MIME prefix (image/*|video/*), streams to /app/backend/media/<uuid>.<ext>, and the mounted /api/media/<file> static route returns byte-exact content."
+}

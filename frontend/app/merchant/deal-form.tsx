@@ -41,6 +41,7 @@ export default function DealForm() {
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState<null | "image" | "video">(null);
 
   // Deal fields
   const [dealType, setDealType] = useState<DealType>("flash");
@@ -104,11 +105,19 @@ export default function DealForm() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false,
       quality: 0.7,
-      base64: true,
     });
-    if (!res.canceled && res.assets?.[0]?.base64) {
-      const mime = res.assets[0].mimeType || "image/jpeg";
-      setImage(`data:${mime};base64,${res.assets[0].base64}`);
+    if (res.canceled || !res.assets?.[0]) return;
+    const asset = res.assets[0];
+    setUploading("image");
+    setError(null);
+    try {
+      const mime = asset.mimeType || "image/jpeg";
+      const { url } = await api.uploadMedia(asset.uri, mime, asset.fileName || `image_${Date.now()}.jpg`);
+      setImage(url);
+    } catch (e: any) {
+      setError(`Image upload failed: ${e?.message || "please try again"}`);
+    } finally {
+      setUploading(null);
     }
   };
 
@@ -121,17 +130,20 @@ export default function DealForm() {
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
       videoMaxDuration: 60,
       quality: 0.5,
-      base64: true,
     });
-    if (!res.canceled && res.assets?.[0]) {
-      const asset = res.assets[0];
-      if (asset.base64) {
-        const mime = asset.mimeType || "video/mp4";
-        setVideoUrl(`data:${mime};base64,${asset.base64}`);
-      } else if (asset.uri) {
-        setVideoUrl(asset.uri);
-      }
+    if (res.canceled || !res.assets?.[0]) return;
+    const asset = res.assets[0];
+    setUploading("video");
+    setError(null);
+    try {
+      const mime = asset.mimeType || "video/mp4";
+      const { url } = await api.uploadMedia(asset.uri, mime, asset.fileName || `video_${Date.now()}.mp4`);
+      setVideoUrl(url);
       setShowVideoPicker(false);
+    } catch (e: any) {
+      setError(`Video upload failed: ${e?.message || "please try again"}`);
+    } finally {
+      setUploading(null);
     }
   };
 
@@ -146,12 +158,20 @@ export default function DealForm() {
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
       videoMaxDuration: 60,
       quality: 0.5,
-      base64: true,
     });
-    if (!res.canceled && res.assets?.[0]?.base64) {
-      const mime = res.assets[0].mimeType || "video/mp4";
-      setVideoUrl(`data:${mime};base64,${res.assets[0].base64}`);
+    if (res.canceled || !res.assets?.[0]) return;
+    const asset = res.assets[0];
+    setUploading("video");
+    setError(null);
+    try {
+      const mime = asset.mimeType || "video/mp4";
+      const { url } = await api.uploadMedia(asset.uri, mime, asset.fileName || `video_${Date.now()}.mp4`);
+      setVideoUrl(url);
       setShowVideoPicker(false);
+    } catch (e: any) {
+      setError(`Video upload failed: ${e?.message || "please try again"}`);
+    } finally {
+      setUploading(null);
     }
   };
 
@@ -267,8 +287,13 @@ export default function DealForm() {
 
         {/* Image */}
         <Text style={styles.label}>Deal image</Text>
-        <TouchableOpacity testID="df-image-pick" style={styles.imagePick} onPress={pickImage} activeOpacity={0.85}>
-          {image ? (
+        <TouchableOpacity testID="df-image-pick" style={styles.imagePick} onPress={pickImage} activeOpacity={0.85} disabled={uploading === "image"}>
+          {uploading === "image" ? (
+            <View style={{ alignItems: "center", gap: 6 }}>
+              <ActivityIndicator size="small" color={colors.brand} />
+              <Text style={styles.pickHint}>Uploading…</Text>
+            </View>
+          ) : image ? (
             <Image source={{ uri: image }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
           ) : (
             <View style={{ alignItems: "center", gap: 6 }}>
@@ -287,8 +312,14 @@ export default function DealForm() {
               style={styles.imagePick}
               onPress={() => setShowVideoPicker(true)}
               activeOpacity={0.85}
+              disabled={uploading === "video"}
             >
-              {videoUrl ? (
+              {uploading === "video" ? (
+                <View style={{ alignItems: "center", gap: 6 }}>
+                  <ActivityIndicator size="small" color={colors.brand} />
+                  <Text style={styles.pickHint}>Uploading video…</Text>
+                </View>
+              ) : videoUrl ? (
                 <View style={{ alignItems: "center", gap: 6 }}>
                   <Ionicons name="videocam" size={26} color={colors.success} />
                   <Text style={styles.pickHint} numberOfLines={1}>

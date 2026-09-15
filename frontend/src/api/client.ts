@@ -41,6 +41,33 @@ async function request<T = any>(
 }
 
 export const api = {
+  // Media upload — used by merchant deal form for image + video attachment.
+  // Accepts a local file URI (file:///, blob:, or web File) and returns a
+  // hosted URL like `/api/media/<uuid>.mp4` that any client can consume.
+  uploadMedia: async (fileUri: string, mimeType: string, name?: string) => {
+    const form = new FormData();
+    // On web we may be handed a File object; on native the URI-based shape works.
+    if (typeof fileUri === "object" && (fileUri as any) instanceof File) {
+      form.append("file", fileUri as any);
+    } else {
+      form.append("file", { uri: fileUri, name: name || `upload_${Date.now()}`, type: mimeType } as any);
+    }
+    const token = await storage.secureGet<string>(TOKEN_KEY, "");
+    const res = await fetch(`${BASE_URL}/api/upload`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form as any,
+    });
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : null;
+    if (!res.ok) {
+      const detail = data?.detail ?? `Upload failed (${res.status})`;
+      throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    }
+    // Return an absolute URL so <Image>/<Video> can render across clients
+    return { ...data, url: `${BASE_URL}${data.url}` } as { url: string; filename: string; bytes: number; content_type: string };
+  },
+
   // Auth
   register: (email: string, password: string, name: string, referral_code?: string) =>
     request<{ access_token: string; user: any }>("/auth/register", {

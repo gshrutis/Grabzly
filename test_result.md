@@ -274,3 +274,16 @@ frontend_new:
   - agent: "testing"
     message: |
       Iteration 11 — 9/9 smoke pass (4 backend + 5 frontend). App boots on SDK 57, all icons render via new CDN loader, map iframe fallback works, no fatal errors. Only pre-existing shadow*/pointerEvents warnings remain.
+  - agent: "main"
+    message: |
+      Iteration 12: Fixed "images/videos not showing" issue.
+      - Backend: added `POST /api/upload` (multipart, 25 MB cap, image/* + video/* only) and mounted `/api/media` as StaticFiles.
+      - Replaced dead `commondatastorage.googleapis.com/gtv-videos-bucket/*` sample videos with working Pexels + Google Exoplayer + samplelib URLs.
+      - Replaced 2 dead Unsplash photo IDs with Pexels equivalents.
+      - Migration script `backend/migrations/clean_media.py` deleted TEST/Iter dev deals, cleared file:// video/image URIs, swapped commondatastorage.
+      - Frontend merchant `deal-form.tsx` now uploads picked images/videos via `api.uploadMedia()` and stores the hosted URL instead of `file://`.
+      - `api.uploadMedia()` prefixes `EXPO_PUBLIC_BACKEND_URL` on the returned URL so any client can consume the media.
+      - Reels player now shows the deal image as poster fallback behind the video.
+  - agent: "testing"
+    message: |
+      Iteration 12 — 7/7 backend pass. Upload works (auth-gated, MIME-validated, byte-exact GET); DB has zero `commondatastorage`/`file://` URLs after migration; sample-videos returns 9 hosted URLs; claim+redeem regression still emits all 4 notifications.

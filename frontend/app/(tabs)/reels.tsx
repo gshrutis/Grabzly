@@ -7,6 +7,7 @@ import { useRouter } from "expo-router";
 import Ionicons from "@react-native-vector-icons/ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useVideoPlayer, VideoView } from "expo-video";
+import { Image } from "expo-image";
 import { api } from "@/src/api/client";
 import { colors, radius, spacing } from "@/src/theme";
 
@@ -49,6 +50,18 @@ function ReelItem({ deal, active, tabBarHeight }: { deal: Deal; active: boolean;
 
   return (
     <View style={[styles.reel, { height: cardHeight }]} testID={`reel-${deal.id}`}>
+      {/* Poster fallback (also renders when the video fails to decode e.g. on
+          headless preview browsers without H.264). */}
+      {deal.image_url ? (
+        <Image
+          source={{ uri: deal.image_url }}
+          style={StyleSheet.absoluteFillObject}
+          contentFit="cover"
+          transition={200}
+        />
+      ) : (
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.surfaceInverse }]} />
+      )}
       {deal.video_url ? (
         <VideoView
           player={player}
@@ -56,9 +69,7 @@ function ReelItem({ deal, active, tabBarHeight }: { deal: Deal; active: boolean;
           contentFit="cover"
           nativeControls={false}
         />
-      ) : (
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.surfaceInverse }]} />
-      )}
+      ) : null}
       <LinearGradient
         colors={["transparent", "rgba(0,0,0,0.85)"]}
         locations={[0.4, 1]}

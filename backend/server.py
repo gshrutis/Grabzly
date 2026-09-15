@@ -1,5 +1,6 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Query, Body
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Query, Body, UploadFile, File
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -35,6 +36,11 @@ REFERRAL_REFERRER_REWARD = 200
 REFERRAL_REFEREE_REWARD = 100
 
 app = FastAPI(title="HappyHour API")
+
+# Local media hosting for merchant-uploaded images/videos.
+MEDIA_DIR = ROOT_DIR / "media"
+MEDIA_DIR.mkdir(exist_ok=True, parents=True)
+app.mount("/api/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
 api = APIRouter(prefix="/api")
 
 logger = logging.getLogger("happyhour")
@@ -1438,7 +1444,7 @@ SAMPLE_MERCHANTS = [
         "verified": True,
         "price_range": "$$$",
         "cover_image": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1000",
-        "logo": "https://images.unsplash.com/photo-1584990347449-a5d9f800a783?w=200",
+        "logo": "https://images.pexels.com/photos/2544829/pexels-photo-2544829.jpeg?auto=compress&w=200",
         "lat_offset": -0.004, "lng_offset": -0.007,
     },
     {
@@ -1474,13 +1480,18 @@ SAMPLE_MERCHANTS = [
 ]
 
 # Sample-video library merchants can pick from
+# NOTE: commondatastorage.googleapis.com/gtv-videos-bucket started returning 403
+# in mid-2026; switched to Pexels + Google Exoplayer test bucket + samplelib.
 SAMPLE_VIDEOS = [
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
+    "https://storage.googleapis.com/exoplayer-test-media-0/BigBuckBunny_320x180.mp4",
+    "https://videos.pexels.com/video-files/4109369/4109369-uhd_2560_1440_25fps.mp4",
+    "https://videos.pexels.com/video-files/3195394/3195394-uhd_2560_1440_25fps.mp4",
+    "https://videos.pexels.com/video-files/3141207/3141207-uhd_2560_1440_25fps.mp4",
+    "https://videos.pexels.com/video-files/4114797/4114797-uhd_2560_1440_25fps.mp4",
+    "https://videos.pexels.com/video-files/854108/854108-hd_1280_720_25fps.mp4",
+    "https://videos.pexels.com/video-files/2795750/2795750-hd_1920_1080_25fps.mp4",
+    "https://videos.pexels.com/video-files/854133/854133-hd_1280_720_25fps.mp4",
+    "https://download.samplelib.com/mp4/sample-5s.mp4",
 ]
 
 
@@ -1490,6 +1501,52 @@ async def list_sample_videos():
         {"id": f"sample-{i}", "url": u, "label": f"Promo template {i+1}"}
         for i, u in enumerate(SAMPLE_VIDEOS)
     ]
+
+
+
+# =========================================================================
+# MEDIA UPLOAD (images + videos) — served back via /api/media/<filename>
+# =========================================================================
+MAX_UPLOAD_MB = 25
+ALLOWED_MIME_PREFIXES = ("image/", "video/")
+
+
+@api.post("/upload")
+async def upload_media(file: UploadFile = File(...), user=Depends(get_current_user)):
+    ct = (file.content_type or "").lower()
+    if not any(ct.startswith(p) for p in ALLOWED_MIME_PREFIXES):
+        raise HTTPException(status_code=400, detail=f"Unsupported content-type: {ct}")
+
+    ext = (Path(file.filename or "").suffix or "").lower()
+    if not ext:
+        # Fall back to a sensible extension from mime type
+        ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
+               "video/mp4": ".mp4", "video/quicktime": ".mov", "video/webm": ".webm"}.get(ct, ".bin")
+
+    # Stream to disk to avoid loading entire file in memory
+    fid = f"{uuid.uuid4().hex}{ext}"
+    dest = MEDIA_DIR / fid
+    size = 0
+    max_bytes = MAX_UPLOAD_MB * 1024 * 1024
+    try:
+        with open(dest, "wb") as out:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > max_bytes:
+                    out.close()
+                    dest.unlink(missing_ok=True)
+                    raise HTTPException(status_code=413, detail=f"File exceeds {MAX_UPLOAD_MB} MB limit")
+                out.write(chunk)
+    finally:
+        await file.close()
+
+    # Public URL — /api is stripped by the ingress and routed here
+    url = f"/api/media/{fid}"
+    return {"url": url, "filename": fid, "bytes": size, "content_type": ct}
+
 
 
 def _make_deals_for_merchant(merchant: dict) -> List[dict]:
@@ -1516,8 +1573,8 @@ def _make_deals_for_merchant(merchant: dict) -> List[dict]:
             ("Sneaker Drop 20% Off", "New-season low tops.", 95.0, 76.0, 20, 15, 25, "video", "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1000"),
         ],
         "kitchenware": [
-            ("Handmade Ceramic Mug Set", "Set of 4, glazed by local artisans.", 48.0, 33.6, 30, 10, 180, "regular", "https://images.unsplash.com/photo-1614859138332-c451ccdf276f?w=1000"),
-            ("Cast Iron Pan Flash Sale", "Pre-seasoned 10-inch skillet.", 65.0, 39.0, 40, 6, 35, "flash", "https://images.unsplash.com/photo-1584990347449-a5d9f800a783?w=1000"),
+            ("Handmade Ceramic Mug Set", "Set of 4, glazed by local artisans.", 48.0, 33.6, 30, 10, 180, "regular", "https://images.pexels.com/photos/1207918/pexels-photo-1207918.jpeg?auto=compress&w=1000"),
+            ("Cast Iron Pan Flash Sale", "Pre-seasoned 10-inch skillet.", 65.0, 39.0, 40, 6, 35, "flash", "https://images.pexels.com/photos/2544829/pexels-photo-2544829.jpeg?auto=compress&w=1000"),
         ],
         "cafe": [
             ("Happy Hour Latte", "Any latte, half price 3-5pm.", 6.0, 3.0, 50, 40, 20, "flash", "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=1000"),
