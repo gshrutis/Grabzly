@@ -37,11 +37,28 @@ REFERRAL_REFEREE_REWARD = 100
 
 app = FastAPI(title="HappyHour API")
 
-# Local media hosting for merchant-uploaded images/videos.
+# Local disk media (legacy: files uploaded before object storage integration).
+# New uploads go straight to Emergent Managed Object Storage; we serve legacy
+# files via /api/media and new files via /api/files/{path:path}.
 MEDIA_DIR = ROOT_DIR / "media"
 MEDIA_DIR.mkdir(exist_ok=True, parents=True)
 app.mount("/api/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
 api = APIRouter(prefix="/api")
+
+# Object storage bootstrap — non-fatal if unavailable at boot.
+from object_storage import (
+    init_storage, put_object, get_object, build_object_path,
+    StorageUnavailable, StorageOutOfCredits, StorageError,
+)
+
+
+@app.on_event("startup")
+async def _boot_storage():
+    try:
+        init_storage()
+        logging.getLogger("happyhour").info("Object storage ready")
+    except Exception as e:  # pragma: no cover
+        logging.getLogger("happyhour").warning(f"Object storage init deferred: {e}")
 
 logger = logging.getLogger("happyhour")
 logging.basicConfig(level=logging.INFO)
@@ -1512,39 +1529,77 @@ ALLOWED_MIME_PREFIXES = ("image/", "video/")
 
 @api.post("/upload")
 async def upload_media(file: UploadFile = File(...), user=Depends(get_current_user)):
+    """Upload an image or video to Emergent Managed Object Storage.
+    Returns `{url, path, filename, bytes, content_type}` where `url` is
+    `/api/files/<path>` (relative — frontend prepends BASE_URL).
+    """
+    from starlette.concurrency import run_in_threadpool
+
     ct = (file.content_type or "").lower()
     if not any(ct.startswith(p) for p in ALLOWED_MIME_PREFIXES):
         raise HTTPException(status_code=400, detail=f"Unsupported content-type: {ct}")
 
-    ext = (Path(file.filename or "").suffix or "").lower()
+    ext = (Path(file.filename or "").suffix or "").lower().lstrip(".")
     if not ext:
-        # Fall back to a sensible extension from mime type
-        ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
-               "video/mp4": ".mp4", "video/quicktime": ".mov", "video/webm": ".webm"}.get(ct, ".bin")
+        ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
+               "video/mp4": "mp4", "video/quicktime": "mov", "video/webm": "webm"}.get(ct, "bin")
 
-    # Stream to disk to avoid loading entire file in memory
-    fid = f"{uuid.uuid4().hex}{ext}"
-    dest = MEDIA_DIR / fid
-    size = 0
+    # Read into memory (capped at 25 MB). object storage `put` is a single request.
     max_bytes = MAX_UPLOAD_MB * 1024 * 1024
-    try:
-        with open(dest, "wb") as out:
-            while True:
-                chunk = await file.read(1024 * 1024)
-                if not chunk:
-                    break
-                size += len(chunk)
-                if size > max_bytes:
-                    out.close()
-                    dest.unlink(missing_ok=True)
-                    raise HTTPException(status_code=413, detail=f"File exceeds {MAX_UPLOAD_MB} MB limit")
-                out.write(chunk)
-    finally:
-        await file.close()
+    buf = bytearray()
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        buf.extend(chunk)
+        if len(buf) > max_bytes:
+            raise HTTPException(status_code=413, detail=f"File exceeds {MAX_UPLOAD_MB} MB limit")
+    await file.close()
 
-    # Public URL — /api is stripped by the ingress and routed here
-    url = f"/api/media/{fid}"
-    return {"url": url, "filename": fid, "bytes": size, "content_type": ct}
+    path, filename = build_object_path(user["id"], ext)
+    try:
+        await run_in_threadpool(put_object, path, bytes(buf), ct or "application/octet-stream")
+    except StorageOutOfCredits as e:
+        raise HTTPException(status_code=402, detail=str(e))
+    except StorageUnavailable as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except StorageError as e:
+        raise HTTPException(status_code=502, detail=f"Object storage error: {e}")
+
+    # Record in DB for owner check on download
+    await db.uploads.insert_one({
+        "id": str(uuid.uuid4()),
+        "owner_id": user["id"],
+        "path": path,
+        "filename": filename,
+        "content_type": ct,
+        "bytes": len(buf),
+        "created_at": iso(now_utc()),
+    })
+
+    # Frontend `rewriteMedia()` prepends EXPO_PUBLIC_BACKEND_URL to any string
+    # starting with `/api/`. Path already begins with the app_name so quote it.
+    from urllib.parse import quote
+    url = f"/api/files/{quote(path, safe='/')}"
+    return {"url": url, "path": path, "filename": filename, "bytes": len(buf), "content_type": ct}
+
+
+@api.get("/files/{obj_path:path}")
+async def download_media(obj_path: str):
+    """Public download route: streams the object back with its original
+    content-type. Ownership is checked at storage time; anyone with the URL
+    can view (matches how `/api/media/*` static files already work).
+    """
+    from starlette.concurrency import run_in_threadpool
+    from fastapi.responses import Response
+    try:
+        data, content_type = await run_in_threadpool(get_object, obj_path)
+    except StorageError as e:
+        # missing objects come back as 500 from the proxy — surface as 404.
+        raise HTTPException(status_code=404, detail=f"Not found: {e}")
+    except StorageUnavailable as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return Response(content=data, media_type=content_type, headers={"Cache-Control": "public, max-age=86400"})
 
 
 

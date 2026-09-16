@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 14 — Emergent Managed Object Storage integration. 8/8 PASS. (A) Startup: 'Object storage ready' logged repeatedly on every backend reload; init_storage() is idempotent and returns the same cached storage_key on second call (module-level test). (B) OTP register + POST /api/upload with 1x1 JPEG → 200; url='/api/files/happyhour/uploads/<user_id>/<uuid>.jpg'; path == url minus '/api/files/'; content_type='image/jpeg'; bytes match; GET on returned URL returns 200 image/jpeg byte-exact; db.uploads row exists with matching owner_id, content_type, bytes. (C) Rejections: no token → 401, text/plain → 400 'Unsupported content-type'. Oversized 26 MB test intentionally skipped (kept from iter-12 marker). (E) Migration verification — /api/deals (27 docs): image_url={FILES_OBJSTORE: 12, HTTPS: 15}, video_url={NONE: 23, HTTPS: 4}. /api/merchants (40 docs): logo={FILES_OBJSTORE: 5, HTTPS: 6, NONE: 29}, cover={FILES_OBJSTORE: 5, HTTPS: 6, NONE: 29}. Zero /api/media/ remain anywhere — migration complete (12+5+5=22 fields moved into object storage, matches spec). (F) GET /api/files/happyhour/uploads/system-migration/<uuid>.jpg → 200 image/jpeg 45,391 bytes. (G) Claim → Redeem regression: create deal → claim → redeem returns points_awarded>=25 and claim.status='redeemed'; db.uploads collection coexists with existing collections. D (bad EMERGENT_LLM_KEY 503 simulation) intentionally skipped as spec permits — too invasive; would require full backend restart with tainted env.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter14_object_storage.py",
+    "/app/test_reports/pytest/iteration_14.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "backend/object_storage.py: init_storage() caches _storage_key module-side; 401/403/503 mapped to typed exceptions (StorageUnavailable/StorageOutOfCredits/StorageError); a 503 response clears the cached key and put_object/get_object each retry once with a fresh key — good self-healing pattern.",
+    "backend/server.py:1530 /api/upload: 25 MB in-memory cap enforced by streaming file.read(1MB) + running-total guard; runs put_object under run_in_threadpool so the event loop stays responsive during the sync requests call. StorageOutOfCredits→402, StorageUnavailable→503, StorageError→502 mapping is precise.",
+    "backend/server.py:1587 /api/files/{obj_path:path}: no auth check (matches previous /api/media static behavior and is called out in the docstring). If per-owner authorization is desired later, db.uploads already carries owner_id — trivial to add.",
+    "backend/server.py:45 legacy `app.mount('/api/media', StaticFiles(...))` is still mounted after migration; safe fallback but returns 404 for the (now zero) unmigrated files. Could be removed in a follow-up once all environments verified.",
+    "backend/migrations/local_to_object_storage.py: idempotent by design (only matches URLs starting with '/api/media/' via $regex). SYSTEM_OWNER='system-migration' cleanly identifies migrated files in object storage paths. urllib.parse.quote(path, safe='/') correctly preserves path separators in the resulting URL.",
+    "backend/.env: EMERGENT_LLM_KEY committed to backend/.env (server-only, not exposed to frontend). No frontend leakage risk.",
+    "server.py file size is ~1768 lines — refactoring into modules (auth, deals, merchant, notifications, uploads) would improve maintainability but is out of scope for this iteration."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter14_object_storage.py (new)",
+    "/app/test_reports/pytest/iteration_14.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (8/8)",
+    "frontend": "not tested — request was backend-only"
+  },
+  "seed_data_creation": "Two OTP users: +911234567914 (IT14 Dave, customer) and +911234567915 (IT14 Eve, merchant 'IT14 Bistro'). One 1x1 JPEG uploaded to object storage under happyhour/uploads/<dave-user-id>/<uuid>.jpg. One test deal created + claimed + redeemed then soft-deleted.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run serially: `pytest backend/tests/test_iter14_object_storage.py -p no:xdist -o addopts=`. Requires both EXPO_PUBLIC_BACKEND_URL (from /app/frontend/.env) and MONGO_URL/DB_NAME (from /app/backend/.env) exported. The DB-verification step in test_upload_then_download_bytewise imports motor directly — do not run under pytest-asyncio strict mode. Object storage init is idempotent module-side; if a future test needs to simulate a 401 from the storage proxy, monkeypatch object_storage._storage_key = None and env EMERGENT_LLM_KEY before importing.",
+  "rca_of_issue": "N/A — iter-14 integration verified end-to-end. Migration in prod moved all 22 legacy /api/media/* references into Emergent Managed Object Storage under happyhour/uploads/system-migration/*; new uploads write to happyhour/uploads/<user_id>/*; retrieval via /api/files/{path} works with correct content-type and 24h Cache-Control header. init_storage() 401/402/403/503 error surface is precise and self-healing on stale keys."
+}
