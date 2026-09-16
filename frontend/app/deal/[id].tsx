@@ -111,6 +111,19 @@ export default function DealDetail() {
       <ScrollView contentContainerStyle={{ paddingBottom: 140 }} showsVerticalScrollIndicator={false}>
         {/* HERO */}
         <View style={styles.hero}>
+          {/* Poster fallback — always render the image so the hero never goes
+              blank while the video buffers or when the platform (e.g. web
+              preview without H.264) can't decode the mp4. */}
+          {deal.image_url ? (
+            <Image
+              source={{ uri: deal.image_url }}
+              style={StyleSheet.absoluteFillObject}
+              contentFit="cover"
+              transition={200}
+            />
+          ) : (
+            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.surfaceTertiary }]} />
+          )}
           {deal.video_url ? (
             <VideoView
               key={deal.video_url}
@@ -120,11 +133,7 @@ export default function DealDetail() {
               nativeControls={false}
               allowsFullscreen={false}
             />
-          ) : deal.image_url ? (
-            <Image source={{ uri: deal.image_url }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
-          ) : (
-            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.surfaceTertiary }]} />
-          )}
+          ) : null}
           <LinearGradient
             colors={["rgba(45,36,34,0.6)", "transparent", "rgba(45,36,34,0.85)"]}
             locations={[0, 0.4, 1]}
