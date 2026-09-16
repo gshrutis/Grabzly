@@ -1480,18 +1480,17 @@ SAMPLE_MERCHANTS = [
 ]
 
 # Sample-video library merchants can pick from
-# NOTE: commondatastorage.googleapis.com/gtv-videos-bucket started returning 403
-# in mid-2026; switched to Pexels + Google Exoplayer test bucket + samplelib.
+# NOTE: Pexels started requiring a Referer header on some CDN edges in 2026
+# and Google's gtv-videos bucket 403s — swapped to samplelib + test-videos.co.uk
+# + ExoPlayer bucket which are unconditionally cache-friendly and work over
+# cellular on iOS/Android.
 SAMPLE_VIDEOS = [
     "https://storage.googleapis.com/exoplayer-test-media-0/BigBuckBunny_320x180.mp4",
-    "https://videos.pexels.com/video-files/4109369/4109369-uhd_2560_1440_25fps.mp4",
-    "https://videos.pexels.com/video-files/3195394/3195394-uhd_2560_1440_25fps.mp4",
-    "https://videos.pexels.com/video-files/3141207/3141207-uhd_2560_1440_25fps.mp4",
-    "https://videos.pexels.com/video-files/4114797/4114797-uhd_2560_1440_25fps.mp4",
-    "https://videos.pexels.com/video-files/854108/854108-hd_1280_720_25fps.mp4",
-    "https://videos.pexels.com/video-files/2795750/2795750-hd_1920_1080_25fps.mp4",
-    "https://videos.pexels.com/video-files/854133/854133-hd_1280_720_25fps.mp4",
     "https://download.samplelib.com/mp4/sample-5s.mp4",
+    "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4",
+    "https://test-videos.co.uk/vids/elephantsdream/mp4/h264/360/Elephants_Dream_360_10s_1MB.mp4",
+    "https://test-videos.co.uk/vids/sintel/mp4/h264/360/Sintel_360_10s_1MB.mp4",
+    "https://test-videos.co.uk/vids/jellyfish/mp4/h264/360/Jellyfish_360_10s_1MB.mp4",
 ]
 
 

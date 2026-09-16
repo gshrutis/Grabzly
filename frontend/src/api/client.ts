@@ -3,6 +3,46 @@ import { storage } from "@/src/utils/storage";
 const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 export const TOKEN_KEY = "hh_session_token";
 
+/**
+ * Resolve any media URL to an absolute path the phone/web client can render.
+ * - `/api/media/xyz.jpg` → `<BASE_URL>/api/media/xyz.jpg`
+ * - `http(s)://…`        → passed through
+ * - `data:…`             → passed through
+ * - falsy                → returned as-is
+ */
+export function resolveMediaUrl<T extends string | null | undefined>(u: T): T {
+  if (!u || typeof u !== "string") return u;
+  if (u.startsWith("/api/") || u.startsWith("/media/")) {
+    return (`${BASE_URL}${u.startsWith("/media/") ? "/api" : ""}${u}`) as T;
+  }
+  return u;
+}
+
+// Recursively rewrite common media-carrying fields so downstream code
+// (Image, VideoView, etc.) always sees absolute URLs.
+const MEDIA_FIELDS = new Set([
+  "image_url", "video_url", "logo", "cover_image", "avatar", "photo", "thumbnail",
+  "hero_image", "url",
+]);
+
+function rewriteMedia(value: any): any {
+  if (Array.isArray(value)) return value.map(rewriteMedia);
+  if (value && typeof value === "object") {
+    const out: any = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (typeof v === "string" && MEDIA_FIELDS.has(k)) {
+        out[k] = resolveMediaUrl(v);
+      } else if (v && (Array.isArray(v) || typeof v === "object")) {
+        out[k] = rewriteMedia(v);
+      } else {
+        out[k] = v;
+      }
+    }
+    return out;
+  }
+  return value;
+}
+
 async function authHeaders(): Promise<Record<string, string>> {
   const token = await storage.secureGet<string>(TOKEN_KEY, "");
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -37,7 +77,7 @@ async function request<T = any>(
     const detail = data?.detail ?? `Request failed (${res.status})`;
     throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
   }
-  return data as T;
+  return rewriteMedia(data) as T;
 }
 
 export const api = {
@@ -65,7 +105,7 @@ export const api = {
       throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
     }
     // Return an absolute URL so <Image>/<Video> can render across clients
-    return { ...data, url: `${BASE_URL}${data.url}` } as { url: string; filename: string; bytes: number; content_type: string };
+    return { ...data, url: resolveMediaUrl(data.url) } as { url: string; filename: string; bytes: number; content_type: string };
   },
 
   // Auth

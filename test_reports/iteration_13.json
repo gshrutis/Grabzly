@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 13 — Backend regression for base64→hosted media migration + reliable sample videos. 6/6 PASS. (A) GET /api/deals (27 docs): image_url {HTTPS:15, MEDIA_RELATIVE:12, DATA:0, FILE:0, OTHER:0}; video_url {NONE:23, HTTPS:4, DATA:0, FILE:0, pexels:0}. (B) GET /api/deals/live-now: 3 live deals, all with valid image_url {MEDIA_RELATIVE:1, HTTPS:2}, zero data:/file://. (C) GET /api/sample-videos: exactly 6 items, all HTTPS, zero pexels.com, zero commondatastorage.googleapis.com. (D) GET /api/media/<real-uuid.jpg> returns 200 image/jpeg, 405,910 bytes. (E) OTP register (+911234567892 IT13 Charlie) + POST /api/upload with small JPEG → 200, url starts with /api/media/ ends .jpg, GET returns byte-exact same content. (F) GET /api/merchants?lat=&lng= (39 docs): logo {MEDIA_RELATIVE:5, HTTPS:6, NONE:28, DATA:0}, cover_image {MEDIA_RELATIVE:5, HTTPS:6, NONE:28, DATA:0}.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter13_media_migration.py",
+    "/app/test_reports/pytest/iteration_13.xml"
+  ],
+  "action_items": [
+    "None — iteration 13 backend criteria fully satisfied. Frontend `rewriteMedia()` in /app/frontend/src/api/client.ts correctly maps every /api/media/… response field to an absolute URL prefixed with EXPO_PUBLIC_BACKEND_URL (verified via code review, not runtime since request was backend-only)."
+  ],
+  "critical_code_review_comments": [
+    "server.py:1487 SAMPLE_VIDEOS now uses ExoPlayer/samplelib/test-videos.co.uk hosts only — no Pexels, no commondatastorage. Note: 'storage.googleapis.com/exoplayer-test-media-0/...' is a DIFFERENT bucket from the previously-flagged 'commondatastorage.googleapis.com' and is known-good for mobile.",
+    "backend/migrations/dedup_base64_media.py — decode_and_save() uses uuid4().hex + safe extension whitelist (jpg/png/webp/gif/svg/mp4/webm/mov) with 'jpg' fallback. No path traversal risk. It correctly rewrites deals.image_url/video_url and merchants.logo/cover_image using $regex match on '^data:' — matches exactly base64 URIs.",
+    "backend/migrations/dedup_base64_media.py:80 swap_pexels_videos uses round-robin over RELIABLE_VIDEOS[4] — deterministic and idempotent for future re-runs.",
+    "frontend/src/api/client.ts:28 rewriteMedia() walks the whole response tree, checking a MEDIA_FIELDS whitelist. Absolute HTTPS URLs are passed through unchanged; data: strings are also passed through (already-migrated data means this is now a no-op path). MEDIA_FIELDS includes 'url' which is useful for /api/sample-videos items but could inadvertently rewrite unrelated 'url' string fields in the future — currently safe because the set of endpoints returning a top-level `url` field is small and all are media.",
+    "frontend/src/api/client.ts:87 uploadMedia() explicitly wraps the response through resolveMediaUrl() so the caller receives an absolute URL — good.",
+    "server.py:1487 SAMPLE_VIDEOS is now 6 (down from 9 in iter-12). Test contract adjusted to `len == 6` as per this iteration's spec. If the array grows again, update the test."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter13_media_migration.py (new)",
+    "/app/test_reports/pytest/iteration_13.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (6/6)",
+    "frontend": "not tested — request was backend-only"
+  },
+  "seed_data_creation": "One OTP phone user +911234567892 ('IT13 Charlie'). One small JPEG (~1 KB) uploaded to /app/backend/media/ per test run — harmless orphan.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run serially: `pytest backend/tests/test_iter13_media_migration.py -p no:xdist -o addopts=`. Export EXPO_PUBLIC_BACKEND_URL from /app/frontend/.env before invoking (pytest does not auto-load frontend/.env). The migration is idempotent — re-running dedup_base64_media.py is safe. If future work re-introduces base64 storage, this test suite will catch it. Note that /api/media/* is served via app.mount() (not the api router) — GETting a filename that doesn't exist returns 404 with default StaticFiles behavior; not currently tested.",
+  "rca_of_issue": "N/A — all iter-13 fixes verified. (1) Migration converted 12 deal + 5 merchant base64 fields into hosted /api/media/<uuid>.<ext> files. (2) All prior videos.pexels.com deal video_url entries were swapped to reliable ExoPlayer/samplelib/test-videos.co.uk hosts. (3) SAMPLE_VIDEOS contains exactly 6 mobile-safe HTTPS URLs. (4) Frontend rewriteMedia() prepends EXPO_PUBLIC_BACKEND_URL to every /api/media/ path via client.ts so Expo <Image>/<Video> receives absolute URLs — no more mobile resolution failures."
+}
