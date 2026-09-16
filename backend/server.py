@@ -1525,6 +1525,51 @@ async def list_sample_videos():
 # =========================================================================
 MAX_UPLOAD_MB = 25
 ALLOWED_MIME_PREFIXES = ("image/", "video/")
+HERO_MAX_EDGE_PX = 1200        # longest side after resize
+HERO_JPEG_QUALITY = 82         # good visual quality at ~30-40% of orig size
+
+
+def _compress_image(raw: bytes, ct: str) -> tuple[bytes, str, str]:
+    """Return (bytes, content_type, ext).
+    - Resizes to longest edge <= HERO_MAX_EDGE_PX (Lanczos)
+    - Keeps PNG for images with alpha, else JPEG @82
+    - GIF/SVG passthrough (Pillow's GIF resize can lose animation; SVG is text)
+    """
+    from io import BytesIO
+    from PIL import Image, ImageOps
+
+    if ct.endswith("/gif") or ct.endswith("/svg+xml"):
+        return raw, ct, {"image/gif": "gif", "image/svg+xml": "svg"}.get(ct, "bin")
+
+    try:
+        img = Image.open(BytesIO(raw))
+        # Respect EXIF rotation (phones often set it)
+        img = ImageOps.exif_transpose(img)
+    except Exception:
+        # Not a decodable image — fall through with original bytes
+        ext = ct.split("/")[-1] if "/" in ct else "bin"
+        return raw, ct, ext
+
+    # Determine target size
+    w, h = img.size
+    longest = max(w, h)
+    if longest > HERO_MAX_EDGE_PX:
+        scale = HERO_MAX_EDGE_PX / float(longest)
+        new_size = (max(1, int(w * scale)), max(1, int(h * scale)))
+        img = img.resize(new_size, Image.LANCZOS)
+
+    has_alpha = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
+    buf = BytesIO()
+    if has_alpha:
+        # keep PNG, still compressed
+        img.save(buf, format="PNG", optimize=True)
+        return buf.getvalue(), "image/png", "png"
+    else:
+        # convert to RGB JPEG for max compression
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        img.save(buf, format="JPEG", quality=HERO_JPEG_QUALITY, optimize=True, progressive=True)
+        return buf.getvalue(), "image/jpeg", "jpg"
 
 
 @api.post("/upload")
@@ -1556,9 +1601,21 @@ async def upload_media(file: UploadFile = File(...), user=Depends(get_current_us
             raise HTTPException(status_code=413, detail=f"File exceeds {MAX_UPLOAD_MB} MB limit")
     await file.close()
 
+    original_bytes = len(buf)
+    compressed_data: bytes = bytes(buf)
+
+    # Compress images (videos pass through)
+    if ct.startswith("image/"):
+        try:
+            compressed_data, ct, new_ext = await run_in_threadpool(_compress_image, bytes(buf), ct)
+            ext = new_ext
+        except Exception:
+            # Never fail the upload on compression error — keep original bytes
+            pass
+
     path, filename = build_object_path(user["id"], ext)
     try:
-        await run_in_threadpool(put_object, path, bytes(buf), ct or "application/octet-stream")
+        await run_in_threadpool(put_object, path, compressed_data, ct or "application/octet-stream")
     except StorageOutOfCredits as e:
         raise HTTPException(status_code=402, detail=str(e))
     except StorageUnavailable as e:
@@ -1566,6 +1623,7 @@ async def upload_media(file: UploadFile = File(...), user=Depends(get_current_us
     except StorageError as e:
         raise HTTPException(status_code=502, detail=f"Object storage error: {e}")
 
+    final_bytes = len(compressed_data)
     # Record in DB for owner check on download
     await db.uploads.insert_one({
         "id": str(uuid.uuid4()),
@@ -1573,7 +1631,9 @@ async def upload_media(file: UploadFile = File(...), user=Depends(get_current_us
         "path": path,
         "filename": filename,
         "content_type": ct,
-        "bytes": len(buf),
+        "bytes": final_bytes,
+        "original_bytes": original_bytes,
+        "compression_ratio": round(final_bytes / original_bytes, 3) if original_bytes else 1.0,
         "created_at": iso(now_utc()),
     })
 
@@ -1581,7 +1641,11 @@ async def upload_media(file: UploadFile = File(...), user=Depends(get_current_us
     # starting with `/api/`. Path already begins with the app_name so quote it.
     from urllib.parse import quote
     url = f"/api/files/{quote(path, safe='/')}"
-    return {"url": url, "path": path, "filename": filename, "bytes": len(buf), "content_type": ct}
+    return {
+        "url": url, "path": path, "filename": filename,
+        "bytes": final_bytes, "original_bytes": original_bytes,
+        "content_type": ct,
+    }
 
 
 @api.get("/files/{obj_path:path}")
