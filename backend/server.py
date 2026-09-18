@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Query, Body, UploadFile, File
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Query, Body, UploadFile, File, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
@@ -1649,21 +1649,80 @@ async def upload_media(file: UploadFile = File(...), user=Depends(get_current_us
 
 
 @api.get("/files/{obj_path:path}")
-async def download_media(obj_path: str):
+async def download_media(obj_path: str, request: Request):
     """Public download route: streams the object back with its original
     content-type. Ownership is checked at storage time; anyone with the URL
     can view (matches how `/api/media/*` static files already work).
+
+    Honors HTTP Range requests so `<VideoView>` / `<video>` can seek and
+    buffer partial content — critical for smooth playback on cellular.
+    Responds with:
+      - 200 + full body + `Accept-Ranges: bytes` when no Range header.
+      - 206 + slice + `Content-Range` + `Accept-Ranges: bytes` for valid Range.
+      - 416 when the requested range is unsatisfiable.
     """
     from starlette.concurrency import run_in_threadpool
     from fastapi.responses import Response
+
     try:
         data, content_type = await run_in_threadpool(get_object, obj_path)
     except StorageError as e:
-        # missing objects come back as 500 from the proxy — surface as 404.
         raise HTTPException(status_code=404, detail=f"Not found: {e}")
     except StorageUnavailable as e:
         raise HTTPException(status_code=503, detail=str(e))
-    return Response(content=data, media_type=content_type, headers={"Cache-Control": "public, max-age=86400"})
+
+    total = len(data)
+    common_headers = {
+        "Cache-Control": "public, max-age=86400",
+        "Accept-Ranges": "bytes",
+    }
+
+    range_header = request.headers.get("range") or request.headers.get("Range")
+    if not range_header:
+        common_headers["Content-Length"] = str(total)
+        return Response(content=data, media_type=content_type, headers=common_headers)
+
+    # Parse "bytes=start-end" per RFC 7233. Supports:
+    #   bytes=0-499   → 0..499
+    #   bytes=500-    → 500..end
+    #   bytes=-500    → last 500 bytes
+    # Multi-range (comma-separated) is intentionally NOT supported.
+    unit, _, rng = range_header.strip().partition("=")
+    if unit.lower() != "bytes" or "," in rng:
+        return Response(
+            status_code=416, media_type=content_type,
+            headers={**common_headers, "Content-Range": f"bytes */{total}"},
+        )
+    start_s, _, end_s = rng.strip().partition("-")
+    try:
+        if start_s == "" and end_s == "":
+            raise ValueError
+        if start_s == "":
+            # suffix range: last N bytes
+            length = int(end_s)
+            if length <= 0:
+                raise ValueError
+            start = max(0, total - length)
+            end = total - 1
+        else:
+            start = int(start_s)
+            end = int(end_s) if end_s else total - 1
+        if start < 0 or start >= total or end < start:
+            raise ValueError
+        end = min(end, total - 1)
+    except ValueError:
+        return Response(
+            status_code=416, media_type=content_type,
+            headers={**common_headers, "Content-Range": f"bytes */{total}"},
+        )
+
+    chunk = data[start:end + 1]
+    headers = {
+        **common_headers,
+        "Content-Range": f"bytes {start}-{end}/{total}",
+        "Content-Length": str(len(chunk)),
+    }
+    return Response(status_code=206, content=chunk, media_type=content_type, headers=headers)
 
 
 
