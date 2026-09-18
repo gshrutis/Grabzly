@@ -102,7 +102,7 @@ export default function DealForm() {
       if (status !== "granted") return;
     }
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       allowsEditing: false,
       quality: 0.7,
     });
@@ -127,7 +127,7 @@ export default function DealForm() {
       if (status !== "granted") return;
     }
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      mediaTypes: ["videos"],
       videoMaxDuration: 60,
       quality: 0.5,
     });
@@ -155,7 +155,7 @@ export default function DealForm() {
     const cam = await ImagePicker.requestCameraPermissionsAsync();
     if (cam.status !== "granted") return;
     const res = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      mediaTypes: ["videos"],
       videoMaxDuration: 60,
       quality: 0.5,
     });

@@ -5,6 +5,9 @@ import * as Haptics from "expo-haptics";
 import { api } from "@/src/api/client";
 import { useAuth } from "@/src/context/auth";
 import { colors, radius, spacing, shadow } from "@/src/theme";
+import CountryPicker, {
+  Country, DEFAULT_COUNTRY, isValidNationalNumber,
+} from "@/src/components/CountryPicker";
 
 type Props = {
   onSuccess: (user: any) => Promise<void> | void;
@@ -12,29 +15,39 @@ type Props = {
 };
 
 /**
- * Reusable phone + OTP login block.
- * Uses mock OTP in demo mode — server accepts `123456` OR the code returned
- * from /api/auth/otp/request (demo_code field). We autofill for testing.
+ * Reusable phone + OTP block with:
+ * - country-code dropdown (top-10 curated list)
+ * - digit-count validation per selected country
+ * - OTP verify auto-creates the user server-side (no separate sign-up)
  */
 export default function PhoneAuthTab({ onSuccess, role: _role = "customer" }: Props) {
   const { setSession } = useAuth();
+  const [country, setCountry] = useState<Country>(DEFAULT_COUNTRY);
   const [step, setStep] = useState<"phone" | "code">("phone");
-  const [phone, setPhone] = useState("");
+  const [national, setNational] = useState("");  // subscriber number only
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [demoCode, setDemoCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const digitsOnly = national.replace(/\D/g, "");
+  const fullPhone = `${country.dial}${digitsOnly}`;
+  const phoneValid = isValidNationalNumber(digitsOnly, country);
+  const expected = country.minDigits === country.maxDigits
+    ? `${country.minDigits} digits`
+    : `${country.minDigits}–${country.maxDigits} digits`;
+
   const sendOtp = async () => {
     setError(null);
-    if (!phone || phone.replace(/\D/g, "").length < 6) {
-      setError("Enter a valid phone number (with country code).");
+    if (!phoneValid) {
+      setError(`Enter a valid ${country.name} number (${expected}).`);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       return;
     }
     setLoading(true);
     try {
-      const res = await api.otpRequest(phone.trim());
+      const res = await api.otpRequest(fullPhone);
       setDemoCode(res.demo_code || null);
       setStep("code");
       Haptics.selectionAsync().catch(() => {});
@@ -52,7 +65,7 @@ export default function PhoneAuthTab({ onSuccess, role: _role = "customer" }: Pr
     }
     setLoading(true);
     try {
-      const res = await api.otpVerify(phone.trim(), code.trim(), name.trim() || undefined);
+      const res = await api.otpVerify(fullPhone, code.trim(), name.trim() || undefined);
       await setSession(res.access_token, res.user);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       await onSuccess(res.user);
@@ -69,16 +82,24 @@ export default function PhoneAuthTab({ onSuccess, role: _role = "customer" }: Pr
         <>
           <View style={styles.field}>
             <Text style={styles.label}>Mobile number</Text>
-            <TextInput
-              testID="phone-input"
-              value={phone}
-              onChangeText={setPhone}
-              placeholder="+91 98765 43210"
-              placeholderTextColor={colors.muted}
-              keyboardType="phone-pad"
-              style={styles.input}
-            />
+            <View style={styles.phoneRow}>
+              <CountryPicker value={country} onChange={(c) => { setCountry(c); setError(null); }} />
+              <TextInput
+                testID="phone-input"
+                value={national}
+                onChangeText={(v) => { setNational(v.replace(/[^\d]/g, "")); setError(null); }}
+                placeholder={expected}
+                placeholderTextColor={colors.muted}
+                keyboardType="phone-pad"
+                maxLength={country.maxDigits + 4}
+                style={styles.phoneInput}
+              />
+            </View>
+            <Text style={styles.hint}>
+              Full number: <Text style={{ fontWeight: "800", color: colors.onSurface }}>{fullPhone || country.dial}</Text>
+            </Text>
           </View>
+
           <View style={styles.field}>
             <Text style={styles.label}>Name (optional for existing users)</Text>
             <TextInput
@@ -101,9 +122,9 @@ export default function PhoneAuthTab({ onSuccess, role: _role = "customer" }: Pr
 
           <TouchableOpacity
             testID="send-otp-btn"
-            style={[styles.primaryBtn, loading && { opacity: 0.6 }]}
+            style={[styles.primaryBtn, (!phoneValid || loading) && { opacity: 0.55 }]}
             onPress={sendOtp}
-            disabled={loading}
+            disabled={!phoneValid || loading}
             activeOpacity={0.85}
           >
             {loading ? <ActivityIndicator color={colors.white} /> : (
@@ -117,7 +138,7 @@ export default function PhoneAuthTab({ onSuccess, role: _role = "customer" }: Pr
       ) : (
         <>
           <Text style={styles.otpSentText}>
-            OTP sent to <Text style={{ fontWeight: "800" }}>{phone}</Text>
+            OTP sent to <Text style={{ fontWeight: "800" }}>{fullPhone}</Text>
           </Text>
           {demoCode && (
             <View style={styles.demoBanner}>
@@ -180,6 +201,15 @@ const styles = StyleSheet.create({
   wrap: { gap: spacing.md },
   field: { gap: spacing.xs },
   label: { fontSize: 13, fontWeight: "800", color: colors.onSurface, marginBottom: 4 },
+  phoneRow: { flexDirection: "row", alignItems: "center" },
+  phoneInput: {
+    flex: 1, height: 48, paddingHorizontal: spacing.md,
+    borderTopRightRadius: radius.md, borderBottomRightRadius: radius.md,
+    backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1.5, borderColor: colors.border,
+    fontSize: 15, color: colors.onSurface,
+  },
+  hint: { fontSize: 11, color: colors.muted, marginTop: 4, fontWeight: "600" },
   input: {
     height: 52, paddingHorizontal: spacing.md,
     borderRadius: radius.md,

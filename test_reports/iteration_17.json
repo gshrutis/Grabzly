@@ -1,0 +1,48 @@
+{
+  "summary": "Iteration 17 frontend-only verification of SignIn simplification + country-code validation + merchant upload fix + unified LocationPicker. All 7 test groups (A-G) PASS end-to-end on the public preview URL against mobile viewport 390x844. (A) /sign-in renders phone-only with testIDs country-picker + phone-input + send-otp-btn; button is aria-disabled=true for <10 IN digits. (B) Country modal exposes all 10 rows (IN/US/GB/AE/SG/AU/CA/DE/FR/JP); SG 7 digits stays disabled, 8 digits enables; IN 9 disabled, 10 enabled; 'Full number:' hint correctly renders +6512345678 and +919876543298. (C) OTP flow: 9876543298 → 123456 → session established (loyalty API loads, /profile shows signed-in user HH3298). (D) /sign-up correctly Redirects to /sign-in (URL bar confirms). (E) /merchant/deal-form loads, df-image-pick taps without any TypeError/MediaTypeOptions crash — the new string-array mediaTypes: ['images'] fix is verified. (F) LocationPickerModal opens from change-location-btn with all four testIDs (search/gps/confirm/close); Nominatim search 'Mumbai' returns real results, tapping first result + confirm closes modal and Profile location updates to 'Mumbai, Mumbai Suburban District, Maharashtra, 400051, India'. (G) become-merchant-btn visible with 'Become a merchant' copy and routes to /merchant/onboarding on tap. Two minor issues observed: (i) router.back() throws 'GO_BACK was not handled' when /sign-in is opened directly (no history stack) — auth still succeeds and session persists, but UX would benefit from router.replace('/(tabs)') fallback; (ii) console warnings 'shadow* deprecated → use boxShadow' and 'props.pointerEvents deprecated → use style.pointerEvents' fire on every screen (react-native-web deprecations, cosmetic).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Deep-link to /sign-in → OTP verify → handleSuccess",
+        "issue": "handleSuccess() calls router.back() when no returnTo param. If the user landed on /sign-in via deep link (no history), Expo Router logs 'The action GO_BACK was not handled by any navigator'. Auth completes and session is stored, but UI remains on the /sign-in screen (OTP form still displayed) until user navigates manually. Fix: fallback to router.replace('/(tabs)') when router.canGoBack() is false. Reference: /app/frontend/app/sign-in.tsx:23-27",
+        "affected_testIDs": ["verify-otp-btn"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "StyleSheet shadow* props",
+        "issue": "Console spams 'shadow* style props are deprecated. Use boxShadow' on every screen (from src/theme shadow.card / shadow.cardStrong). Cosmetic on web today, but will break on future react-native-web versions. Reference: /app/frontend/src/theme.ts (shadow tokens)."
+      },
+      {
+        "component": "View pointerEvents prop",
+        "issue": "Console warns 'props.pointerEvents is deprecated. Use style.pointerEvents'. Emitted from profile notifications card. Reference: /app/frontend/app/(tabs)/profile.tsx:275 — pointerEvents='none' is passed inline; move to style={{ pointerEvents: 'none' }}."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_17.json"
+  ],
+  "action_items": [
+    "In /app/frontend/app/sign-in.tsx handleSuccess: replace router.back() with `router.canGoBack() ? router.back() : router.replace('/(tabs)')` so direct deep-link /sign-in still redirects into the app after OTP verify.",
+    "Optional: migrate theme shadow tokens to boxShadow style and change `<View ... pointerEvents='none'>` to `style={{ pointerEvents: 'none' }}` in profile.tsx to silence RN web deprecation warnings."
+  ],
+  "critical_code_review_comments": [
+    "CountryPicker + isValidNationalNumber are clean: keys are ISO-2, digit ranges match ITU E.164, and PhoneAuthTab correctly gates the button with `disabled={!phoneValid || loading}`.",
+    "sign-up.tsx redirect preserves returnTo param — good.",
+    "deal-form.tsx and onboarding.tsx now use `mediaTypes: ['images']` / `['videos']` string arrays — the new SDK 57 API. No more `ImagePicker.MediaTypeOptions` references anywhere in the two files.",
+    "LocationPickerModal uses proper debounced Nominatim search (350ms) + testable result rows (loc-result-<place_id>). Confirm returns { lat, lng, label } and Profile persists via setManual() then re-seeds merchants around the new anchor — good pattern."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only iteration)", "frontend": "100% (7/7 test groups pass)"},
+  "seed_data_creation": "None — used existing OTP demo (123456) and Nominatim public API.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "SignIn phone-only + country picker validation + unified LocationPicker + merchant upload fix all pass on preview URL. Only two minor UX/deprecation items remain (see action_items). No blocking bugs. Regression test recipe: navigate to /sign-in, verify country-picker/phone-input/send-otp-btn testIDs; disabled state under 10 IN digits; switch to country-SG and verify 7 disabled / 8 enabled; OTP 9876543298 → 123456 → session; /sign-up redirects to /sign-in; profile → change-location-btn opens LocationPickerModal; become-merchant-btn routes to /merchant/onboarding; /merchant/deal-form df-image-pick + df-video-pick don't crash.",
+  "rca_of_issue": "N/A — this is a feature/regression verification iteration, no live bug. The two minor items are UX polish (router.back fallback) and RN-web deprecation warnings, not functional failures."
+}

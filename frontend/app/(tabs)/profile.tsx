@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, ActivityIndicator, Share, Platform, Modal,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, ActivityIndicator, Share, Platform,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -87,36 +87,14 @@ export default function Profile() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const [showLocPicker, setShowLocPicker] = useState(false);
   const [showPreciseLocPicker, setShowPreciseLocPicker] = useState(false);
   const { setManual } = useLocation();
-
-  const pickCity = async (city: { name: string; lat: number; lng: number }) => {
-    Haptics.selectionAsync().catch(() => {});
-    await setManual(city.lat, city.lng, city.name);
-    // Re-seed backend around new anchor so demo has nearby merchants there too
-    try {
-      await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/seed?lat=${city.lat}&lng=${city.lng}&force=true`, { method: "POST" });
-    } catch {}
-    setShowLocPicker(false);
-  };
 
   const doSignOut = async () => {
     Haptics.selectionAsync().catch(() => {});
     await signOut();
     router.replace("/(tabs)");
   };
-
-  const CITIES = [
-    { name: "San Francisco, CA", lat: 37.7749, lng: -122.4194 },
-    { name: "New York, NY", lat: 40.7128, lng: -74.0060 },
-    { name: "Los Angeles, CA", lat: 34.0522, lng: -118.2437 },
-    { name: "London, UK", lat: 51.5074, lng: -0.1278 },
-    { name: "Tokyo, JP", lat: 35.6762, lng: 139.6503 },
-    { name: "Mumbai, IN", lat: 19.0760, lng: 72.8777 },
-    { name: "Bengaluru, IN", lat: 12.9716, lng: 77.5946 },
-    { name: "Delhi, IN", lat: 28.6139, lng: 77.2090 },
-  ];
 
   return (
     <ScrollView
@@ -240,22 +218,13 @@ export default function Profile() {
           </View>
           <View style={styles.locBtnRow}>
             <TouchableOpacity
-              testID="pick-precise-location-btn"
+              testID="change-location-btn"
               style={styles.inlineBtn}
               onPress={() => setShowPreciseLocPicker(true)}
               activeOpacity={0.85}
             >
               <Ionicons name="locate" size={13} color={colors.brand} />
-              <Text style={styles.inlineBtnText}>Pick precise location</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              testID="change-location-btn"
-              style={[styles.inlineBtn, { backgroundColor: colors.info }]}
-              onPress={() => setShowLocPicker(true)}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="business" size={13} color={colors.white} />
-              <Text style={[styles.inlineBtnText, { color: colors.white }]}>Quick city switch</Text>
+              <Text style={styles.inlineBtnText}>Change location</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -381,36 +350,6 @@ export default function Profile() {
 
       <Text style={styles.footer}>HappyHour · v1.0</Text>
 
-      {/* Location picker modal */}
-      <Modal transparent animationType="slide" visible={showLocPicker} onRequestClose={() => setShowLocPicker(false)}>
-        <View style={styles.locModalOverlay}>
-          <View style={[styles.locModalSheet, { paddingBottom: insets.bottom + spacing.lg }]}>
-            <View style={styles.locSheetHeader}>
-              <Text style={styles.locSheetTitle}>Change city</Text>
-              <TouchableOpacity onPress={() => setShowLocPicker(false)}>
-                <Ionicons name="close" size={22} color={colors.onSurface} />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.locSheetSub}>Pick a demo city — nearby merchants will be regenerated around it.</Text>
-            {CITIES.map((c) => (
-              <TouchableOpacity
-                key={c.name}
-                testID={`city-${c.name}`}
-                style={styles.cityRow}
-                onPress={() => pickCity(c)}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="location" size={18} color={colors.brand} />
-                <Text style={styles.cityName}>{c.name}</Text>
-                {loc.label === c.name && (
-                  <Ionicons name="checkmark-circle" size={18} color={colors.success} />
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-      </Modal>
-
       {/* Precise Location Picker (search + GPS + pin) */}
       <LocationPickerModal
         visible={showPreciseLocPicker}
@@ -426,7 +365,7 @@ export default function Profile() {
         initialLat={loc.lat}
         initialLng={loc.lng}
         initialLabel={loc.label}
-        title="Set precise location"
+        title="Change location"
       />
     </ScrollView>
   );

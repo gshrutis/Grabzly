@@ -89,7 +89,7 @@ export default function MerchantOnboarding() {
       }
     }
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       allowsEditing: !!aspect,
       aspect,
       quality: 0.7,
