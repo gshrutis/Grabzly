@@ -1,0 +1,36 @@
+{
+  "summary": "Phase 3 (Settings + Global Search + live loyalty wiring) — 19/19 pytest tests passed. Settings CRUD, validation bounds, partial-merge persistence, public /api/settings whitelist, live-wired loyalty (PATCH 55 -> merchant redeem awarded 55 pts, ledger + /auth/me verified), global search shape, case-insensitivity, regex-escape, limit clamp (1..20), and Phase-2 categories/cities/login regression smoke all green. Defaults (brand_name='Happy Hour', default_deal_radius_km=5, loyalty_points_per_redemption=25, referral_referrer_reward=200, referral_referee_reward=100, guest_browsing_enabled=true, reels_tab_enabled=true) restored at end of run. All TEST_ users/merchants/deals/claims/points_ledger/notifications cleaned up.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter21_settings_search.py",
+    "/app/test_reports/pytest/iteration_21.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "admin_panel.py PATCH /admin/settings uses `v is not None or k in {'brand_logo_url'}` — this correctly allows clearing brand_logo_url via null. Other nullable string fields (brand_name/support_email) would be treated as no-op if null is sent; acceptable given SettingsPatch defaults.",
+    "Public /api/settings has no ETag/Cache-Control — mobile clients will re-fetch on every start. Consider a short in-memory cache (5–15s) or ETag when this endpoint gets hit on cold-start.",
+    "Global search regex escape is applied (re.escape) — safe against ReDoS from user input. Good.",
+    "Search endpoint runs three queries via asyncio.gather without indexes on merchants.name/deals.title/users.email/name — fine for seed sizes but note for production scale. No blocking issue for MVP."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter21_settings_search.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (19/19)",
+    "frontend": "N/A (backend-only scope per request)"
+  },
+  "seed_data_creation": "Created + fully cleaned up: test customers (testloyal_*, regr_*), 1 test merchant (testmerch_*), 1 test deal, 1 claim, associated ledger/notification rows.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 21 (Phase 3) fully green when run serially. NOTE: pytest.ini uses `-n auto` (xdist) — the live-loyalty test can race with parallel settings-restore tests because settings are global-mutable. If a future run flakes, run `pytest ... -o addopts=''` to force serial, or mark TestLiveLoyaltyWiring with `@pytest.mark.xdist_group('settings')` to serialize just that class. Defaults are restored on teardown regardless.",
+  "rca_of_issue": "N/A — no functional bugs found. Only a test-harness parallelism race observed during initial run (workers gw0 restored loyalty_points_per_redemption to 25 while gw1 was mid-redeem). Confirmed to be a test-infra issue, not a product bug: re-running serially yielded 19/19 pass and matched the expected 55-pt award, ledger entry, and /auth/me delta."
+}

@@ -2,12 +2,19 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import * as Location from "expo-location";
 import { Platform } from "react-native";
 import { storage } from "@/src/utils/storage";
+import { api } from "@/src/api/client";
 
 type LocationState = {
   lat: number;
   lng: number;
   label: string;
   isFallback: boolean;
+};
+
+export type City = {
+  id: string; slug: string; name: string;
+  country?: string; state?: string;
+  lat: number; lng: number; radius_km: number;
 };
 
 type Ctx = {
@@ -17,6 +24,10 @@ type Ctx = {
   requesting: boolean;
   requestPermission: () => Promise<boolean>;
   setManual: (lat: number, lng: number, label: string) => Promise<void>;
+  cities: City[];
+  selectedCity: City | null;
+  setSelectedCity: (city: City | null) => Promise<void>;
+  refreshCities: () => Promise<void>;
 };
 
 // Default anchor: San Francisco (matches backend seed).
@@ -28,6 +39,7 @@ const DEFAULT_LOC: LocationState = {
 };
 
 const LOC_KEY = "hh_last_location";
+const CITY_KEY = "hh_selected_city";
 
 const LocationCtx = createContext<Ctx | null>(null);
 
@@ -36,17 +48,43 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   const [granted, setGranted] = useState(false);
   const [canAskAgain, setCanAskAgain] = useState(true);
   const [requesting, setRequesting] = useState(false);
+  const [cities, setCities] = useState<City[]>([]);
+  const [selectedCity, setSelectedCityState] = useState<City | null>(null);
 
   useEffect(() => {
     (async () => {
       const cached = await storage.getItem<string>(LOC_KEY, "");
       if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          setLoc(parsed);
-        } catch {}
+        try { setLoc(JSON.parse(cached)); } catch {}
+      }
+      const cachedCity = await storage.getItem<City | null>(CITY_KEY, null);
+      if (cachedCity && typeof cachedCity === "object") {
+        setSelectedCityState(cachedCity as City);
       }
     })();
+  }, []);
+
+  const refreshCities = useCallback(async () => {
+    try {
+      const list = await api.listCities();
+      setCities(list || []);
+      // If the selected city no longer exists (e.g. admin deactivated it), drop it.
+      if (selectedCity && !list?.some((c: City) => c.id === selectedCity.id)) {
+        setSelectedCityState(null);
+        await storage.removeItem(CITY_KEY);
+      }
+    } catch {}
+  }, [selectedCity]);
+
+  useEffect(() => { refreshCities(); }, [refreshCities]);
+
+  const setSelectedCity = useCallback(async (city: City | null) => {
+    setSelectedCityState(city);
+    if (city) {
+      await storage.setItem(CITY_KEY, city);
+    } else {
+      await storage.removeItem(CITY_KEY);
+    }
   }, []);
 
   const requestPermission = useCallback(async () => {
@@ -112,8 +150,10 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ loc, granted, canAskAgain, requesting, requestPermission, setManual }),
-    [loc, granted, canAskAgain, requesting, requestPermission, setManual],
+    () => ({ loc, granted, canAskAgain, requesting, requestPermission, setManual,
+             cities, selectedCity, setSelectedCity, refreshCities }),
+    [loc, granted, canAskAgain, requesting, requestPermission, setManual,
+     cities, selectedCity, setSelectedCity, refreshCities],
   );
 
   return <LocationCtx.Provider value={value}>{children}</LocationCtx.Provider>;

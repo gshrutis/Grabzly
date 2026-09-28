@@ -4,9 +4,11 @@ import Ionicons from "@react-native-vector-icons/ionicons";
 import { View, StyleSheet, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "@/src/theme";
+import { useSettings } from "@/src/context/settings";
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
+  const { settings } = useSettings();
 
   return (
     <Tabs
@@ -55,6 +57,7 @@ export default function TabsLayout() {
             </View>
           ),
           tabBarButtonTestID: "tab-reels",
+          href: settings.reels_tab_enabled ? undefined : null,
         }}
       />
       <Tabs.Screen

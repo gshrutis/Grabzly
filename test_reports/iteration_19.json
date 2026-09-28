@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 19 Admin Panel MVP Phase 1 — BOTH backend (17/17 pytest) and frontend (T14-T19) pass end-to-end. Backend: admin login (super_admin), 401 on wrong creds, 429 after 5 failures on unique email (seeded admin protected), /me returns admin profile, /me returns 403 with customer JWT and 401 without token, /dashboard?range=30d returns full kpis (total_customers=100, total_merchants=41, total_deals=29, active_deals=9) with kpis.today.{new_customers,new_merchants,new_deals} and charts.{deals_by_category,merchants_by_city,growth}. Merchants list with limit=5 respects pagination, includes active_deals/total_deals enrichment, strips password_hash/otp_code. PATCH merchants/{id}/status {status:'active'} returns ok:true and sets verification_status='approved'. Deals list?status=active correctly filters expires_at>now AND status!=archived. PATCH deals/{id}/status {status:'featured'} sets featured=true. Customers list strips secrets. PATCH customers/{id}/status {status:'blocked'} persists. audit_log collection has rows (verified via Motor: customer status:blocked TEST_iter19, merchant status:active TEST_iter19, merchant status:active TEST_iter19_audit). Regression: GET /api/deals still 200 with ≥1 item. Frontend (Chromium 1280x800 on preview URL): /admin redirects to /admin/sign-in when no token; seeded creds admin@happyhour.local / HappyAdmin@2026 log in to /admin dashboard with all KPI cards + charts (deals by category, top cities, signups); nav-merchants shows list with row-<id> testIDs; clicking a row loads merchant detail with admin-actions-card + Approve/Reject/Suspend/Deactivate buttons (added testIDs action-active/action-rejected/action-suspended/action-inactive during test to enable e2e assertion — MINOR TEST-ENABLEMENT FIX ONLY, non-functional); Approve tap succeeds; Sign out clears hh_admin_token from localStorage and redirects back to /admin/sign-in. Console warnings 'shadow* deprecated' and 'pointerEvents deprecated' still fire (pre-existing cosmetic RN-web deprecations tracked from iteration 17).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "StyleSheet shadow* props", "issue": "Console spams 'shadow* style props are deprecated. Use boxShadow' on admin screens (from src/theme shadow.card). Cosmetic on web today. Reference: /app/frontend/src/theme.ts (shadow tokens) — same finding as iteration 17, still unaddressed."},
+      {"component": "View pointerEvents prop", "issue": "'props.pointerEvents is deprecated. Use style.pointerEvents' still logged. Reference: /app/frontend/app/(tabs)/profile.tsx (same as iteration 17)."}
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_19.json",
+    "/app/test_reports/pytest/iteration_19.xml",
+    "/app/backend/tests/test_iter19_admin_panel.py"
+  ],
+  "action_items": [
+    "OPTIONAL polish: In AdminDetail web branch, replace global window.prompt() for required-reason actions (reject/suspend) with a proper modal so the flow works consistently on both web + native. Current prompt fallback works on Chromium but is not styled and can be blocked by browser prompt disable policies.",
+    "OPTIONAL: migrate theme shadow tokens to boxShadow style and change `<View ... pointerEvents='none'>` to `style={{ pointerEvents: 'none' }}` to silence RN-web deprecation warnings (carried over from iteration 17)."
+  ],
+  "critical_code_review_comments": [
+    "admin_panel.wire_admin_router pattern uses app.dependency_overrides[require_admin] = _impl at wiring time — clever, but a source of surprise. Consider making require_admin a real dependency that reads a global getter at call time instead of overrides. Current impl works fine as long as wire_admin_router is called exactly once at startup.",
+    "Brute-force protection is in-memory (module-level _failed dict). Fine for single-process, but will not stop attacks in a multi-worker/multi-pod deployment. For production, back this by Redis or Mongo with TTL.",
+    "admin_login constant-time-ish path (`verify_password(pwd, '$2b$12$'+'a'*53)`) protects against user-enumeration timing — good.",
+    "All admin mutation routes correctly write audit_log rows with id, admin_id, entity_type, entity_id, action, reason, at (ISO). Verified 3 rows present after the test run.",
+    "Sensitive projections OK: users queries use {password_hash:0, otp_code:0}; merchant detail uses same for owner. No leaks observed in any response.",
+    "Deal 'active' filter uses `expires_at > now AND status != archived` — matches spec. Note: does not exclude 'paused' status; if pause should hide from active list, add {status:{$nin:['archived','paused']}}.",
+    "list endpoints correctly clamp limit to [1, 50]."
+  ],
+  "updated_files": [
+    "/app/frontend/src/components/AdminDetail.tsx (added testID='admin-actions-card', testID='action-<key>' on action buttons, testID='reason-input' — TEST-ENABLEMENT ONLY, no behavior change)",
+    "/app/backend/tests/test_iter19_admin_panel.py (new)"
+  ],
+  "success_rate": {"backend": "100% (17/17 pytest)", "frontend": "100% (6/6 flows T14-T19)"},
+  "seed_data_creation": "None; used seeded super_admin (admin@happyhour.local) + auto-seeded 6 merchants + 15 deals + 100 auto-generated customers from prior iterations. Created 1 disposable customer via OTP (phone 98765NNNNN, code 123456) to test 403 path + block flow. Test mutations flip a real merchant to 'active' (idempotent) — no destructive state.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Admin panel is at /admin. Backend routes under /api/admin/* require Bearer JWT with role in {admin, super_admin}. Seeded creds in backend/.env: ADMIN_SEED_EMAIL=admin@happyhour.local, ADMIN_SEED_PASSWORD=HappyAdmin@2026 (seed runs at server startup via seed_super_admin). Rate-limit is in-memory keyed by email → use unique email when testing 429 to avoid locking real admin. Frontend testIDs: admin-email, admin-password, admin-signin-btn, admin-logout, nav-dashboard/merchants/deals/customers, chip-<status>, admin-search, range-<key>, row-<id>, admin-actions-card, action-active/action-rejected/action-suspended/action-inactive/action-approved/action-featured/action-blocked, reason-input. Public-side regression path: GET /api/deals must remain 200 with ≥1 item.",
+  "rca_of_issue": "N/A — no defects found. Only two low-value action items (web reason modal, RN-web deprecations)."
+}

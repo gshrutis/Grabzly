@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { storage } from "@/src/utils/storage";
 import { useLocation } from "@/src/context/location";
+import { useSettings } from "@/src/context/settings";
 import { colors, radius, spacing, shadow } from "@/src/theme";
 
 const ONBOARDED_KEY = "hh_onboarded_v1";
@@ -16,6 +17,7 @@ export default function OnboardingPriming() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { requestPermission, requesting } = useLocation();
+  const { settings } = useSettings();
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
@@ -129,11 +131,13 @@ export default function OnboardingPriming() {
         </TouchableOpacity>
         <TouchableOpacity
           testID="skip-location-btn"
-          style={styles.secondaryBtn}
-          onPress={handleSkip}
+          style={[styles.secondaryBtn, !settings.guest_browsing_enabled && styles.secondaryBtnDisabled]}
+          onPress={settings.guest_browsing_enabled ? handleSkip : () => router.push("/sign-in")}
           activeOpacity={0.7}
         >
-          <Text style={styles.secondaryBtnText}>Browse without location</Text>
+          <Text style={styles.secondaryBtnText}>
+            {settings.guest_browsing_enabled ? "Browse without location" : "Sign in to continue"}
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
           testID="onboarding-merchant-link"
@@ -253,6 +257,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  secondaryBtnDisabled: { opacity: 0.6 },
   secondaryBtnText: {
     color: colors.muted,
     fontSize: 14,

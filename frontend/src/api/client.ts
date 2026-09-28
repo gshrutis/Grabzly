@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { storage } from "@/src/utils/storage";
 
 const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
@@ -82,20 +83,48 @@ async function request<T = any>(
 
 export const api = {
   // Media upload — used by merchant deal form for image + video attachment.
-  // Accepts a local file URI (file:///, blob:, or web File) and returns a
-  // hosted URL like `/api/media/<uuid>.mp4` that any client can consume.
+  // Accepts a local file URI (file:///, blob:, or web object URL) and returns
+  // a hosted URL like `/api/files/<path>` that any client can render.
+  //
+  // Platform handling:
+  //   • Web: fetch the URI → Blob → append as a real File (multipart parser
+  //     needs a Blob/File instance, NOT a `{uri,name,type}` plain object which
+  //     JSON.stringify's into garbage and produces the ‑1KB "[object Object]"
+  //     upload bug the merchant deal form was hitting).
+  //   • Native (iOS/Android/Expo Go): the React Native FormData polyfill
+  //     accepts `{uri,name,type}` and streams the file from disk; a Blob
+  //     would fail to serialize on native.
   uploadMedia: async (fileUri: string, mimeType: string, name?: string) => {
-    const form = new FormData();
-    // On web we may be handed a File object; on native the URI-based shape works.
-    if (typeof fileUri === "object" && (fileUri as any) instanceof File) {
-      form.append("file", fileUri as any);
-    } else {
-      form.append("file", { uri: fileUri, name: name || `upload_${Date.now()}`, type: mimeType } as any);
+    if (!fileUri || typeof fileUri !== "string") {
+      throw new Error("uploadMedia requires a file URI string");
     }
+    const filename = name || `upload_${Date.now()}.${(mimeType.split("/")[1] || "bin").split(";")[0]}`;
+    const form = new FormData();
+
+    if (Platform.OS === "web") {
+      // Convert the (blob: / data: / http:) URL to an actual File/Blob before append.
+      const blob = await (await fetch(fileUri)).blob();
+      // Use File where possible so `filename` is preserved end-to-end.
+      const file: any = typeof File !== "undefined"
+        ? new File([blob], filename, { type: mimeType || blob.type })
+        : blob;
+      form.append("file", file, filename);
+    } else {
+      // Native: the RN FormData polyfill reads `{ uri, name, type }` and streams
+      // the file from disk directly — DO NOT wrap this in JSON.
+      form.append("file", { uri: fileUri, name: filename, type: mimeType } as any);
+    }
+
     const token = await storage.secureGet<string>(TOKEN_KEY, "");
     const res = await fetch(`${BASE_URL}/api/upload`, {
       method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: {
+        // IMPORTANT: do NOT set Content-Type manually — fetch will set
+        // `multipart/form-data; boundary=…` correctly from the FormData body.
+        // Setting it here (e.g. `application/json`) is what caused the
+        // previous "sending plain object" symptom.
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: form as any,
     });
     const text = await res.text();
@@ -142,8 +171,15 @@ export const api = {
   categories: () => request<any[]>("/categories"),
   sampleVideos: () => request<any[]>("/sample-videos"),
 
+  // Public system settings (admin-managed)
+  readPublicSettings: () => request<any>("/settings"),
+
+  // Cities (admin-managed, read-only public)
+  listCities: (query?: { lat?: number; lng?: number }) =>
+    request<any[]>("/cities", { query }),
+
   // Merchants (public)
-  listMerchants: (query?: { lat?: number; lng?: number; category?: string; q?: string }) =>
+  listMerchants: (query?: { lat?: number; lng?: number; category?: string; q?: string; city?: string }) =>
     request<any[]>("/merchants", { query }),
   getMerchant: (id: string, query?: { lat?: number; lng?: number }) =>
     request<any>(`/merchants/${id}`, { query }),
@@ -156,7 +192,7 @@ export const api = {
   // Deals (public)
   listDeals: (query?: {
     lat?: number; lng?: number; category?: string; deal_type?: string;
-    live_now?: boolean; q?: string; max_km?: number; sort?: string;
+    live_now?: boolean; q?: string; max_km?: number; sort?: string; city?: string;
   }) => request<any[]>("/deals", { query }),
   liveNow: (query?: { lat?: number; lng?: number }) =>
     request<any[]>("/deals/live-now", { query }),

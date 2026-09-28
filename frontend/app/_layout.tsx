@@ -9,6 +9,7 @@ import { StatusBar } from "expo-status-bar";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider } from "@/src/context/auth";
 import { LocationProvider } from "@/src/context/location";
+import { SettingsProvider } from "@/src/context/settings";
 
 LogBox.ignoreAllLogs(true);
 
@@ -30,20 +31,22 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <AuthProvider>
           <LocationProvider>
-            <StatusBar style="dark" />
-            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#FFFDFB" } }}>
-              <Stack.Screen name="index" />
-              <Stack.Screen name="onboarding-categories" />
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="sign-in" options={{ presentation: "modal" }} />
-              <Stack.Screen name="sign-up" options={{ presentation: "modal" }} />
-              <Stack.Screen name="deal/[id]" />
-              <Stack.Screen name="store/[id]" />
-              <Stack.Screen name="claim/[id]" options={{ presentation: "modal", gestureEnabled: false }} />
-              <Stack.Screen name="search" />
-              <Stack.Screen name="reset-password" options={{ presentation: "modal" }} />
-              <Stack.Screen name="merchant" />
-            </Stack>
+            <SettingsProvider>
+              <StatusBar style="dark" />
+              <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#FFFDFB" } }}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="onboarding-categories" />
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="sign-in" options={{ presentation: "modal" }} />
+                <Stack.Screen name="sign-up" options={{ presentation: "modal" }} />
+                <Stack.Screen name="deal/[id]" />
+                <Stack.Screen name="store/[id]" />
+                <Stack.Screen name="claim/[id]" options={{ presentation: "modal", gestureEnabled: false }} />
+                <Stack.Screen name="search" />
+                <Stack.Screen name="reset-password" options={{ presentation: "modal" }} />
+                <Stack.Screen name="merchant" />
+              </Stack>
+            </SettingsProvider>
           </LocationProvider>
         </AuthProvider>
       </SafeAreaProvider>

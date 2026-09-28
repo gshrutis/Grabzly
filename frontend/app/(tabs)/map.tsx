@@ -8,11 +8,12 @@ import { api } from "@/src/api/client";
 import { useLocation } from "@/src/context/location";
 import { CATEGORY_META, colors, radius, spacing, shadow } from "@/src/theme";
 import LeafletMap from "@/src/components/LeafletMap";
+import CityPicker from "@/src/components/CityPicker";
 
 export default function MapView() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { loc, requestPermission } = useLocation();
+  const { loc, requestPermission, selectedCity } = useLocation();
   const [merchants, setMerchants] = useState<any[]>([]);
   const [selected, setSelected] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -22,12 +23,18 @@ export default function MapView() {
     (async () => {
       setLoading(true);
       try {
-        const m = await api.listMerchants({ lat: loc.lat, lng: loc.lng, category: activeCat || undefined });
+        const refLat = selectedCity?.lat ?? loc.lat;
+        const refLng = selectedCity?.lng ?? loc.lng;
+        const m = await api.listMerchants({
+          lat: refLat, lng: refLng,
+          category: activeCat || undefined,
+          city: selectedCity?.slug || undefined,
+        });
         setMerchants(m);
       } catch (e) { console.warn(e); }
       setLoading(false);
     })();
-  }, [loc.lat, loc.lng, activeCat]);
+  }, [loc.lat, loc.lng, activeCat, selectedCity]);
 
   const markers = merchants.map((m: any) => ({
     id: m.id,
@@ -43,8 +50,11 @@ export default function MapView() {
         <View style={styles.titleRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>Nearby merchants</Text>
-            <Text style={styles.subtitle}>{merchants.length} in {loc.label}</Text>
+            <Text style={styles.subtitle}>
+              {merchants.length} in {selectedCity ? selectedCity.name : loc.label}
+            </Text>
           </View>
+          <CityPicker compact />
           <TouchableOpacity
             testID="use-my-location-btn"
             style={styles.gpsBtn}
@@ -86,7 +96,7 @@ export default function MapView() {
       ) : (
         <View style={styles.mapWrap}>
           <LeafletMap
-            center={{ lat: loc.lat, lng: loc.lng }}
+            center={{ lat: selectedCity?.lat ?? loc.lat, lng: selectedCity?.lng ?? loc.lng }}
             zoom={13}
             markers={markers}
             onMarkerPress={(id) => setSelected(merchants.find((m) => m.id === id))}

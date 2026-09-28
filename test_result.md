@@ -287,3 +287,79 @@ frontend_new:
   - agent: "testing"
     message: |
       Iteration 12 — 7/7 backend pass. Upload works (auth-gated, MIME-validated, byte-exact GET); DB has zero `commondatastorage`/`file://` URLs after migration; sample-videos returns 9 hosted URLs; claim+redeem regression still emits all 4 notifications.
+  - agent: "main"
+    message: |
+      Iteration 20: Admin Panel Phase 2 — Categories + Cities modules.
+
+      Backend (admin_panel.py):
+      - CATEGORIES: hierarchical (parent_id), CRUD at `/api/admin/categories`.
+        - `GET /api/admin/categories` returns `{items, tree}` with per-slug merchant_count + deal_count.
+        - `POST /api/admin/categories` — auto slug from name, validates uniqueness, parent existence, applies_to ∈ {merchants,deals,both}.
+        - `PATCH /api/admin/categories/{id}` — cycle detection when changing parent_id, slug rename allowed if unused.
+        - `DELETE /api/admin/categories/{id}` — refuses if it has children or is in use by merchants/deals (409-style safety).
+        - `seed_default_categories(db)` — one-shot migrates the legacy CATEGORIES constant into MongoDB on first boot.
+      - CITIES: geo-anchored regions with a radius.
+        - `GET /api/admin/cities` — returns items with merchant_count + active_deal_count (haversine, in-memory, radius-based).
+        - `POST /api/admin/cities` — validates lat/lng ranges, radius (0–500 km), slug uniqueness.
+        - `PATCH/DELETE /api/admin/cities/{id}`.
+        - Startup seed: San Francisco (37.7749,-122.4194, 25 km).
+
+      Public endpoints:
+      - `GET /api/categories` — now reads from DB (falls back to legacy constant if empty).
+      - `GET /api/cities` (new) — active cities, optional `?lat=&lng=` for distance sort.
+      - `GET /api/deals?city=<slug>` (new) — filters deals within the city's radius (haversine on deal lat/lng).
+      - `GET /api/merchants?city=<slug>` (new) — same filter for merchants.
+
+      Frontend:
+      - Admin sidebar now has "Categories" and "Cities" nav items.
+      - `/app/frontend/app/admin/(panel)/categories/index.tsx` — tree view with inline create/edit/delete + Add-child affordance per node. Modal editor supports name/slug/parent/icon/color/order/applies_to/is_active.
+      - `/app/frontend/app/admin/(panel)/cities/index.tsx` — table with per-city stats, edit/create/delete. City editor has an "Auto-locate" button that hits Nominatim to autofill lat/lng from the city + state + country.
+      - Customer LocationContext extended with `cities`, `selectedCity`, `setSelectedCity` (persisted). Selected city drives the feed & map API calls via the new `city` query param and also recenters the map.
+      - New `CityPicker` component (`/app/frontend/src/components/CityPicker.tsx`) — pill button + modal sheet with "Near me" + admin cities. Wired into Home Feed header and Map header.
+
+      Verified manually via curl + screenshots:
+      - Admin login → Categories page renders 6 seeded items with slug + counts (24 merchants/3 deals for Food, etc).
+      - Admin Cities page shows San Francisco with 35 merchants / 9 active deals.
+      - Customer feed shows the "Near me" pill; tapping opens modal with "Near me" + "San Francisco".
+      - `POST /api/admin/categories` creates a child slug ("pizza") and `DELETE` cleans it up.
+
+      Please test:
+      1) Admin `/api/admin/categories` CRUD — create root + child + edit + delete, cycle protection.
+      2) Admin `/api/admin/cities` CRUD — validation of lat/lng/radius, per-city stats accuracy.
+      3) Public `/api/categories` now returns DB data with icon/color/parent_id.
+      4) Public `/api/cities` returns list; distance sort works with lat/lng.
+      5) Public `/api/deals?city=san-francisco` and `/api/merchants?city=san-francisco` filter properly.
+      6) Bad city slug is silently ignored (no filter applied) — this is intentional.
+      7) Frontend: CityPicker persists selection across reloads (localStorage on web).
+
+backend_phase2:
+  - task: "Admin Categories CRUD (hierarchical)"
+    file: "backend/admin_panel.py"
+    status: "NA"
+    needs_retesting: true
+  - task: "Admin Cities CRUD (geo + radius)"
+    file: "backend/admin_panel.py"
+    status: "NA"
+    needs_retesting: true
+  - task: "Public /api/categories from DB with fallback"
+    file: "backend/server.py"
+    status: "NA"
+    needs_retesting: true
+  - task: "Public /api/cities + city geo-filter on /api/deals & /api/merchants"
+    file: "backend/server.py"
+    status: "NA"
+    needs_retesting: true
+
+frontend_phase2:
+  - task: "Admin Categories page (tree + modal editor)"
+    file: "frontend/app/admin/(panel)/categories/index.tsx"
+    status: "NA"
+    needs_retesting: true
+  - task: "Admin Cities page (table + modal + geocode)"
+    file: "frontend/app/admin/(panel)/cities/index.tsx"
+    status: "NA"
+    needs_retesting: true
+  - task: "Customer CityPicker on feed + map; persists selection; filters API"
+    file: "frontend/src/components/CityPicker.tsx + frontend/src/context/location.tsx"
+    status: "NA"
+    needs_retesting: true

@@ -15,6 +15,8 @@ import DealCard from "@/src/components/DealCard";
 import Countdown from "@/src/components/Countdown";
 import EmptyState from "@/src/components/EmptyState";
 import NotificationBell from "@/src/components/NotificationBell";
+import CityPicker from "@/src/components/CityPicker";
+import { useSettings } from "@/src/context/settings";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -46,7 +48,8 @@ const SORT_OPTIONS: { id: SortKey; label: string }[] = [
 export default function HomeFeed() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { loc } = useLocation();
+  const { loc, selectedCity } = useLocation();
+  const { settings } = useSettings();
   const [cats, setCats] = useState<any[]>([]);
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<string | null>(null);
@@ -57,19 +60,33 @@ export default function HomeFeed() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [userTouchedRadius, setUserTouchedRadius] = useState(false);
+
+  // Apply admin's `default_deal_radius_km` on first mount unless the user
+  // has already picked a radius themselves.
+  useEffect(() => {
+    if (userTouchedRadius) return;
+    const d = Number(settings.default_deal_radius_km);
+    if (isFinite(d) && d > 0) setMaxKm(d);
+  }, [settings.default_deal_radius_km, userTouchedRadius]);
 
   const fetchAll = useCallback(async () => {
     try {
+      // If a city is selected, use its center as the reference lat/lng so
+      // distance/sort behave sensibly.
+      const refLat = selectedCity?.lat ?? loc.lat;
+      const refLng = selectedCity?.lng ?? loc.lng;
       const [c, d, l] = await Promise.all([
         api.categories(),
         api.listDeals({
-          lat: loc.lat, lng: loc.lng,
+          lat: refLat, lng: refLng,
           category: selectedCat || undefined,
           deal_type: selectedType || undefined,
           max_km: maxKm < 999 ? maxKm : undefined,
           sort: sort || undefined,
+          city: selectedCity?.slug || undefined,
         }),
-        api.liveNow({ lat: loc.lat, lng: loc.lng }),
+        api.liveNow({ lat: refLat, lng: refLng }),
       ]);
       setCats(c);
       setDeals(d);
@@ -77,7 +94,7 @@ export default function HomeFeed() {
     } catch (e) {
       console.warn("fetch feed error", e);
     }
-  }, [loc.lat, loc.lng, selectedCat, selectedType, maxKm, sort]);
+  }, [loc.lat, loc.lng, selectedCat, selectedType, maxKm, sort, selectedCity]);
 
   useEffect(() => {
     (async () => {
@@ -174,6 +191,7 @@ export default function HomeFeed() {
                 onPress={() => {
                   Haptics.selectionAsync().catch(() => {});
                   setMaxKm(r.value);
+                  setUserTouchedRadius(true);
                 }}
               >
                 <Text style={[styles.filterPillText, maxKm === r.value && styles.filterPillTextActive]}>
@@ -216,18 +234,22 @@ export default function HomeFeed() {
       {/* Sticky header */}
       <View style={[styles.headerWrap, { paddingTop: insets.top + spacing.sm }]}>
         <View style={styles.topRow}>
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, gap: 4 }}>
             <Text style={styles.hello}>Deals near you</Text>
-            <TouchableOpacity
-              onPress={() => router.push("/(tabs)/profile")}
-              style={styles.locChip}
-              activeOpacity={0.7}
-              testID="location-chip"
-            >
-              <Ionicons name="location" size={12} color={colors.brand} />
-              <Text style={styles.locText} numberOfLines={1}>{loc.label}</Text>
-              <Ionicons name="chevron-forward" size={12} color={colors.muted} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <CityPicker compact />
+              {!selectedCity && (
+                <TouchableOpacity
+                  onPress={() => router.push("/(tabs)/profile")}
+                  style={styles.locChip}
+                  activeOpacity={0.7}
+                  testID="location-chip"
+                >
+                  <Ionicons name="location" size={12} color={colors.brand} />
+                  <Text style={styles.locText} numberOfLines={1}>{loc.label}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
           <TouchableOpacity
             testID="search-open-btn"

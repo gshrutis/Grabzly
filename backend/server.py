@@ -520,7 +520,67 @@ CATEGORIES = [
 
 @api.get("/categories")
 async def list_categories():
-    return CATEGORIES
+    """Read from DB-backed categories (managed by admin). Falls back to legacy
+    constant when DB is empty (first boot, before seeding runs)."""
+    docs = await db.categories.find(
+        {"is_active": {"$ne": False}}, {"_id": 0}
+    ).sort([("order", 1), ("name", 1)]).to_list(200)
+    if not docs:
+        return CATEGORIES
+    return [{
+        "id": d["slug"],
+        "name": d["name"],
+        "icon": d.get("icon"),
+        "color": d.get("color"),
+        "parent_id": d.get("parent_id"),
+        "applies_to": d.get("applies_to", "both"),
+    } for d in docs]
+
+
+# =========================================================================
+# CITIES (public — read only; admin manages via /api/admin/cities)
+# =========================================================================
+@api.get("/cities")
+async def list_cities_public(lat: Optional[float] = None, lng: Optional[float] = None):
+    """Active cities, sorted by admin `order` (default) or nearest to lat/lng."""
+    docs = await db.cities.find(
+        {"is_active": {"$ne": False}}, {"_id": 0}
+    ).sort([("order", 1), ("name", 1)]).to_list(500)
+    out = []
+    for c in docs:
+        item = {
+            "id": c["id"], "slug": c["slug"], "name": c["name"],
+            "country": c.get("country"), "state": c.get("state"),
+            "lat": c["lat"], "lng": c["lng"], "radius_km": c.get("radius_km", 25),
+        }
+        if lat is not None and lng is not None:
+            item["distance_km"] = round(haversine_km(lat, lng, c["lat"], c["lng"]), 2)
+        out.append(item)
+    if lat is not None and lng is not None:
+        out.sort(key=lambda x: x.get("distance_km", 1e9))
+    return out
+
+
+async def _resolve_city(city: Optional[str]):
+    """Resolve a `?city=` param (slug OR id) into a city document, or None."""
+    if not city:
+        return None
+    return await db.cities.find_one(
+        {"$or": [{"slug": city}, {"id": city}]}, {"_id": 0}
+    )
+
+
+# =========================================================================
+# PUBLIC SETTINGS (read-only subset of admin settings)
+# =========================================================================
+@api.get("/settings")
+async def read_public_settings():
+    """Live values that shape customer/merchant UX (branding, defaults,
+    feature flags). Sensitive keys are never exposed here."""
+    from admin_panel import load_settings, PUBLIC_SETTING_KEYS
+    doc = await load_settings(db)
+    return {k: doc[k] for k in PUBLIC_SETTING_KEYS if k in doc}
+
 
 
 # =========================================================================
@@ -532,6 +592,7 @@ async def list_merchants(
     lng: Optional[float] = None,
     category: Optional[str] = None,
     q: Optional[str] = None,
+    city: Optional[str] = None,
 ):
     query: Dict[str, Any] = {}
     if category:
@@ -539,6 +600,15 @@ async def list_merchants(
     if q:
         query["name"] = {"$regex": q, "$options": "i"}
     docs = await db.merchants.find(query, {"_id": 0}).to_list(500)
+
+    # City geo-filter: keep merchants within the selected city's radius.
+    city_doc = await _resolve_city(city)
+    if city_doc:
+        r = city_doc.get("radius_km", 25)
+        docs = [m for m in docs
+                if isinstance(m.get("lat"), (int, float)) and isinstance(m.get("lng"), (int, float))
+                and haversine_km(city_doc["lat"], city_doc["lng"], m["lat"], m["lng"]) <= r]
+
     if lat is not None and lng is not None:
         for m in docs:
             m["distance_km"] = round(haversine_km(lat, lng, m["lat"], m["lng"]), 2)
@@ -809,6 +879,7 @@ async def list_deals(
     q: Optional[str] = None,
     max_km: Optional[float] = None,
     sort: Optional[Literal["distance", "discount", "expiring", "rating", "price_low"]] = None,
+    city: Optional[str] = None,
 ):
     query: Dict[str, Any] = {}
     if category:
@@ -824,6 +895,15 @@ async def list_deals(
     query = _public_filter(query)
     deals = await db.deals.find(query, {"_id": 0}).to_list(500)
     deals = _enrich_deals(deals)
+
+    # City geo-filter (based on deal.lat/lng — falls back to merchant lat via
+    # the seeded fields; deals without coords are dropped when city is set).
+    city_doc = await _resolve_city(city)
+    if city_doc:
+        r = city_doc.get("radius_km", 25)
+        deals = [d for d in deals
+                 if isinstance(d.get("lat"), (int, float)) and isinstance(d.get("lng"), (int, float))
+                 and haversine_km(city_doc["lat"], city_doc["lng"], d["lat"], d["lng"]) <= r]
 
     if lat is not None and lng is not None:
         for d in deals:
@@ -1110,10 +1190,13 @@ async def merchant_redeem(body: RedeemIn, user=Depends(get_current_merchant)):
         {"$set": {"status": "redeemed", "redeemed_at": iso(now), "redeemed_by": user["id"]}},
     )
 
-    # Award loyalty points to customer
+    # Award loyalty points to customer (values come from live admin settings).
     customer_id = claim["user_id"]
     customer = await db.users.find_one({"id": customer_id})
-    points_awarded = POINTS_PER_REDEMPTION
+    from admin_panel import get_setting
+    points_awarded = int(await get_setting(db, "loyalty_points_per_redemption", POINTS_PER_REDEMPTION))
+    referrer_reward = int(await get_setting(db, "referral_referrer_reward", REFERRAL_REFERRER_REWARD))
+    referee_reward = int(await get_setting(db, "referral_referee_reward", REFERRAL_REFEREE_REWARD))
     referral_bonus_awarded = 0
 
     # Referral: first redeemed claim triggers referral bonuses
@@ -1122,15 +1205,15 @@ async def merchant_redeem(body: RedeemIn, user=Depends(get_current_merchant)):
         # This function is being called BEFORE the count update; so if prior == 1 (this one)
         if prior == 1:
             # award referee (customer) bonus + referrer bonus
-            referral_bonus_awarded = REFERRAL_REFEREE_REWARD
+            referral_bonus_awarded = referee_reward
             await db.users.update_one(
                 {"id": customer["referred_by"]},
-                {"$inc": {"points": REFERRAL_REFERRER_REWARD}},
+                {"$inc": {"points": referrer_reward}},
             )
             await db.points_ledger.insert_one({
                 "id": str(uuid.uuid4()),
                 "user_id": customer["referred_by"],
-                "delta": REFERRAL_REFERRER_REWARD,
+                "delta": referrer_reward,
                 "reason": "referral_referrer",
                 "meta": {"referred_user_id": customer_id},
                 "created_at": iso(now),
@@ -1883,6 +1966,28 @@ async def _startup():
     if count == 0:
         await _do_seed(37.7749, -122.4194)
         logger.info("Auto-seeded initial merchant + deal data")
+    # Admin panel: seed super admin from env (idempotent)
+    try:
+        from admin_panel import (
+            seed_super_admin, wire_admin_router,
+            seed_default_categories, seed_default_settings,
+        )
+        wire_admin_router(app, db, verify_password, create_token, hash_password, get_current_user)
+        await seed_super_admin(db, hash_password)
+        await seed_default_categories(db)
+        await seed_default_settings(db)
+        # Seed a starter city (San Francisco) once — admin can add more.
+        if await db.cities.count_documents({}) == 0:
+            now = iso(now_utc())
+            await db.cities.insert_one({
+                "id": str(uuid.uuid4()), "name": "San Francisco", "slug": "san-francisco",
+                "country": "USA", "state": "CA", "lat": 37.7749, "lng": -122.4194,
+                "radius_km": 25, "is_active": True, "order": 0,
+                "created_at": now, "updated_at": now,
+            })
+        logger.info("Admin panel wired & super-admin seeded")
+    except Exception as e:
+        logger.warning(f"Admin panel wiring failed: {e}")
 
 
 @app.on_event("shutdown")
