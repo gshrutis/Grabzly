@@ -113,14 +113,26 @@ export default function DealDetail() {
         <View style={styles.hero}>
           {/* Poster fallback — always render the image so the hero never goes
               blank while the video buffers or when the platform (e.g. web
-              preview without H.264) can't decode the mp4. */}
+              preview without H.264) can't decode the mp4. Use `contain` so
+              the whole image stays visible; the blurred cover behind fills
+              any letterbox area. */}
           {deal.image_url ? (
-            <Image
-              source={{ uri: deal.image_url }}
-              style={StyleSheet.absoluteFillObject}
-              contentFit="cover"
-              transition={200}
-            />
+            <>
+              <Image
+                source={{ uri: deal.image_url }}
+                style={StyleSheet.absoluteFillObject}
+                contentFit="cover"
+                blurRadius={20}
+                transition={200}
+              />
+              <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(45,36,34,0.35)" }]} />
+              <Image
+                source={{ uri: deal.image_url }}
+                style={StyleSheet.absoluteFillObject}
+                contentFit="contain"
+                transition={200}
+              />
+            </>
           ) : (
             <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.surfaceTertiary }]} />
           )}

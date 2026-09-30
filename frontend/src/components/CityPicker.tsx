@@ -9,8 +9,12 @@ import { useLocation, type City } from "@/src/context/location";
 import { colors, radius, spacing, shadow } from "@/src/theme";
 
 export default function CityPicker({ compact }: { compact?: boolean }) {
-  const { cities, selectedCity, setSelectedCity } = useLocation();
+  const { cities, selectedCity, setSelectedCity, refreshCities } = useLocation();
   const [open, setOpen] = useState(false);
+
+  // Refresh admin-managed cities every time the picker opens so newly-added
+  // cities appear without an app restart.
+  const openPicker = () => { setOpen(true); refreshCities(); };
 
   const label = selectedCity ? selectedCity.name : "Near me";
 
@@ -19,7 +23,7 @@ export default function CityPicker({ compact }: { compact?: boolean }) {
       <TouchableOpacity
         testID="city-picker-btn"
         style={[styles.pill, compact && styles.pillCompact]}
-        onPress={() => setOpen(true)}
+        onPress={openPicker}
         activeOpacity={0.85}
       >
         <Ionicons name={selectedCity ? "location" : "navigate"} size={14} color={colors.brand} />

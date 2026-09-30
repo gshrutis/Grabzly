@@ -20,7 +20,7 @@ export default function MerchantOnboarding() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, refresh } = useAuth();
-  const { loc } = useLocation();
+  const { loc, cities } = useLocation();
 
   const [step, setStep] = useState<Step>(1);
   const [saving, setSaving] = useState(false);
@@ -31,6 +31,7 @@ export default function MerchantOnboarding() {
   const [category, setCategory] = useState<string>("food");
   const [subCategory, setSubCategory] = useState("");
   const [address, setAddress] = useState("");
+  const [city, setCity] = useState<string>("");
   const [hours, setHours] = useState("10:00 - 22:00");
   const [phone, setPhone] = useState("");
   const [priceRange, setPriceRange] = useState<"$" | "$$" | "$$$">("$$");
@@ -62,6 +63,7 @@ export default function MerchantOnboarding() {
           setCategory(m.category || "food");
           setSubCategory(m.sub_category || "");
           setAddress(m.address || "");
+          setCity(m.city || "");
           setHours(m.hours || "10:00 - 22:00");
           setPhone(m.phone || "");
           setPriceRange((m.price_range as any) || "$$");
@@ -112,7 +114,7 @@ export default function MerchantOnboarding() {
     try {
       await api.merchantOnboard({
         name, category, sub_category: subCategory, description,
-        address, lat, lng, hours, phone, price_range: priceRange,
+        address, city, lat, lng, hours, phone, price_range: priceRange,
         logo, cover_image: cover,
         business_license_doc: licenseDoc, tax_id_doc: taxDoc, owner_id_doc: idDoc,
         tax_id_number: taxIdNumber,
@@ -218,6 +220,44 @@ export default function MerchantOnboarding() {
                   <Text style={styles.pickMapBtnText}>Pick on map</Text>
                 </TouchableOpacity>
               </View>
+            </Field>
+
+            <Field label="City" testID="mo-city">
+              {cities.length === 0 ? (
+                <TextInput
+                  value={city} onChangeText={setCity}
+                  placeholder="Enter city (admin has not configured any yet)"
+                  placeholderTextColor={colors.muted}
+                  style={styles.input}
+                />
+              ) : (
+                <View style={styles.chipRow}>
+                  {cities.map((c) => {
+                    const active = city === c.name;
+                    return (
+                      <TouchableOpacity
+                        key={c.id}
+                        testID={`mo-city-${c.slug}`}
+                        onPress={() => {
+                          Haptics.selectionAsync().catch(() => {});
+                          setCity(c.name);
+                          if (typeof c.lat === "number" && typeof c.lng === "number") {
+                            setLat(c.lat); setLng(c.lng);
+                          }
+                        }}
+                        activeOpacity={0.85}
+                        style={[styles.chip, active && { backgroundColor: colors.brand, borderColor: colors.brand }]}
+                      >
+                        <Ionicons name="location" size={12}
+                          color={active ? colors.white : colors.brand} />
+                        <Text style={[styles.chipText, active && { color: colors.white }]}>
+                          {c.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
             </Field>
 
             <Field label="Business hours">

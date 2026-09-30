@@ -127,7 +127,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(b
 
 
 async def get_current_merchant(user=Depends(get_current_user)):
-    if user.get("role") != "merchant":
+    if not user_has_role(user, "merchant"):
         raise HTTPException(status_code=403, detail="Merchant role required")
     return user
 
@@ -138,6 +138,50 @@ def sanitize(doc: dict) -> dict:
     doc.pop("_id", None)
     doc.pop("password_hash", None)
     return doc
+
+
+# =========================================================================
+# PHONE NORMALIZATION + ROLE HELPERS
+# =========================================================================
+def normalize_phone(raw: Optional[str]) -> Optional[str]:
+    """Return a canonical E.164-ish phone string, or None.
+
+    Strips whitespace/dashes/parens; preserves a leading '+'. This is what we
+    store in `phone_normalized` (unique index) and what all lookups use.
+    Two numbers are considered the same iff their normalized forms match."""
+    if not raw:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    plus = s.startswith("+")
+    digits = "".join(ch for ch in s if ch.isdigit())
+    if not digits:
+        return None
+    return ("+" + digits) if plus else digits
+
+
+def user_roles(u: dict) -> List[str]:
+    """Backward-compat: fall back to the legacy single `role` field."""
+    r = u.get("roles")
+    if isinstance(r, list) and r:
+        return sorted(set(r))
+    single = u.get("role")
+    return [single] if single else ["customer"]
+
+
+def user_has_role(u: dict, role: str) -> bool:
+    return role in user_roles(u)
+
+
+async def ensure_role(user_id: str, role: str) -> None:
+    """Idempotently add `role` to the user's roles set; keep legacy `role`
+    aligned so old code paths still work."""
+    await db.users.update_one(
+        {"id": user_id},
+        {"$addToSet": {"roles": role}, "$set": {"role": role}},
+    )
+
 
 
 def new_referral_code() -> str:
@@ -176,6 +220,55 @@ async def merchant_owner_id(merchant_id: str) -> Optional[str]:
     return None
 
 
+async def _notify_followers_of_new_deal(merchant: dict, deal: dict) -> int:
+    """One-shot fan-out to followers when a deal transitions to publicly-visible.
+
+    Idempotent per (customer_id, deal_id): we check a marker on the deal and
+    skip if it's already been fanned out. Followers are users who have this
+    merchant in their `favorited_merchants` array.
+    """
+    deal_id = deal.get("id")
+    merchant_id = merchant.get("id")
+    if not deal_id or not merchant_id:
+        return 0
+    owner_id = merchant.get("owner_id")
+    # Idempotency: set a marker only if it hasn't been set yet.
+    res = await db.deals.update_one(
+        {"id": deal_id, "followers_notified_at": {"$exists": False}},
+        {"$set": {"followers_notified_at": iso(now_utc())}},
+    )
+    if res.modified_count == 0:
+        return 0
+    followers_cur = db.users.find(
+        {"favorited_merchants": merchant_id, "id": {"$ne": owner_id}},
+        {"_id": 0, "id": 1},
+    )
+    followers = [u["id"] async for u in followers_cur]
+    if not followers:
+        return 0
+    title = f"New deal from {merchant.get('name') or 'a merchant you follow'}"
+    body = deal.get("title") or "Tap to view the latest deal."
+    now_iso = iso(now_utc())
+    docs = [{
+        "id": str(uuid.uuid4()),
+        "user_id": uid,
+        "type": "new_deal_from_followed",
+        "title": title,
+        "body": body,
+        "meta": {
+            "deal_id": deal_id,
+            "merchant_id": merchant_id,
+            "merchant_name": merchant.get("name"),
+            "image_url": deal.get("image_url"),
+        },
+        "read": False,
+        "created_at": now_iso,
+    } for uid in followers]
+    if docs:
+        await db.notifications.insert_many(docs)
+    return len(docs)
+
+
 # =========================================================================
 # MODELS
 # =========================================================================
@@ -202,6 +295,7 @@ class MerchantOnboardIn(BaseModel):
     sub_category: Optional[str] = None
     description: Optional[str] = ""
     address: str
+    city: Optional[str] = None
     lat: float
     lng: float
     hours: str
@@ -220,6 +314,7 @@ class MerchantUpdateIn(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     address: Optional[str] = None
+    city: Optional[str] = None
     lat: Optional[float] = None
     lng: Optional[float] = None
     hours: Optional[str] = None
@@ -353,8 +448,15 @@ async def register(body: RegisterIn):
 
 
 def _public_user(u: dict) -> dict:
+    roles = user_roles(u)
+    active = u.get("active_role") if u.get("active_role") in roles else roles[0]
     return {
-        "id": u["id"], "email": u.get("email"), "phone": u.get("phone"), "name": u["name"], "role": u.get("role", "customer"),
+        "id": u["id"], "email": u.get("email"), "phone": u.get("phone"), "name": u["name"],
+        # `role` is kept for backward compatibility with older frontends; new
+        # code should read `roles` + `active_role`.
+        "role": active,
+        "roles": roles,
+        "active_role": active,
         "preferred_categories": u.get("preferred_categories", []),
         "favorited_merchants": u.get("favorited_merchants", []),
         "points": u.get("points", 0),
@@ -382,7 +484,9 @@ DEMO_OTP = "123456"
 async def otp_request(body: OtpRequestIn):
     """Mock OTP: for the demo we log the code but never actually send SMS.
     The frontend can accept `123456` OR the code returned in the debug field."""
-    phone = body.phone.strip()
+    phone = normalize_phone(body.phone)
+    if not phone:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
     await db.otp_codes.update_one(
         {"phone": phone},
         {"$set": {"phone": phone, "code": DEMO_OTP, "created_at": iso(now_utc())}},
@@ -395,13 +499,18 @@ async def otp_request(body: OtpRequestIn):
 
 @api.post("/auth/otp/verify")
 async def otp_verify(body: OtpVerifyIn):
-    phone = body.phone.strip()
+    phone = normalize_phone(body.phone)
+    if not phone:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
     if body.code.strip() != DEMO_OTP:
         rec = await db.otp_codes.find_one({"phone": phone})
         if not rec or rec.get("code") != body.code.strip():
             raise HTTPException(status_code=401, detail="Invalid or expired code")
-    # Upsert user by phone
-    user = await db.users.find_one({"phone": phone})
+    # ONE MOBILE = ONE USER. Look up by canonical phone (with a fallback to the
+    # legacy `phone` field for accounts that predate normalization).
+    user = await db.users.find_one({"phone_normalized": phone})
+    if not user:
+        user = await db.users.find_one({"phone": phone})
     if not user:
         user_id = str(uuid.uuid4())
         referral_code = new_referral_code()
@@ -413,10 +522,13 @@ async def otp_verify(body: OtpVerifyIn):
         user_doc = {
             "id": user_id,
             "phone": phone,
+            "phone_normalized": phone,
             "email": None,
             "password_hash": None,
             "name": (body.name or f"HH{phone[-4:]}"),
             "role": "customer",
+            "roles": ["customer"],
+            "active_role": "customer",
             "preferred_categories": [],
             "favorited_merchants": [],
             "points": 0,
@@ -425,8 +537,28 @@ async def otp_verify(body: OtpVerifyIn):
             "referred_by": referred_by,
             "created_at": iso(now_utc()),
         }
-        await db.users.insert_one(user_doc)
+        try:
+            await db.users.insert_one(user_doc)
+        except Exception as e:
+            # Unique-index race: another concurrent request just claimed this
+            # phone. Re-fetch and use the existing user rather than erroring.
+            logger.warning(f"OTP insert race, re-reading existing user: {e}")
+            user_doc = await db.users.find_one({"phone_normalized": phone})
+            if not user_doc:
+                raise HTTPException(status_code=500, detail="Auth conflict — please retry")
         user = user_doc
+    else:
+        # Heal legacy accounts on the fly: ensure phone_normalized + roles are set.
+        patch: Dict[str, Any] = {}
+        if not user.get("phone_normalized"):
+            patch["phone_normalized"] = phone
+        if not isinstance(user.get("roles"), list) or not user["roles"]:
+            patch["roles"] = [user.get("role") or "customer"]
+        if not user.get("active_role"):
+            patch["active_role"] = user.get("role") or "customer"
+        if patch:
+            await db.users.update_one({"id": user["id"]}, {"$set": patch})
+            user.update(patch)
     token = create_token(user["id"])
     return {"access_token": token, "user": _public_user(user)}
 
@@ -448,6 +580,20 @@ async def reset_password(body: ResetPasswordIn):
 @api.get("/auth/me")
 async def me(user=Depends(get_current_user)):
     return _public_user(user)
+
+
+@api.post("/auth/switch-role")
+async def switch_active_role(body: Dict[str, Any] = Body(...), user=Depends(get_current_user)):
+    """Change the active role for the current session. The user must already
+    have the requested role in their `roles` array — we never grant it here."""
+    role = str(body.get("role", "")).strip()
+    if role not in {"customer", "merchant"}:
+        raise HTTPException(status_code=400, detail="role must be 'customer' or 'merchant'")
+    if not user_has_role(user, role):
+        raise HTTPException(status_code=403, detail=f"You don't have the '{role}' role")
+    await db.users.update_one({"id": user["id"]}, {"$set": {"active_role": role, "role": role}})
+    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
+    return {"user": _public_user(fresh)}
 
 
 @api.patch("/auth/me")
@@ -678,8 +824,13 @@ async def merchant_onboard(body: MerchantOnboardIn, user=Depends(get_current_use
         doc["created_at"] = iso(now_utc())
         await db.merchants.insert_one(doc)
 
-    # Elevate role
-    await db.users.update_one({"id": user["id"]}, {"$set": {"role": "merchant"}})
+    # Elevate role — add "merchant" to the roles set, keep any existing roles
+    # (e.g. "customer") so one mobile stays as one user with multiple roles.
+    # Also flip active_role so the user lands in merchant mode immediately.
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$addToSet": {"roles": "merchant"}, "$set": {"role": "merchant", "active_role": "merchant"}},
+    )
     merchant = await db.merchants.find_one({"id": merchant_id}, {"_id": 0})
     return merchant
 
@@ -775,6 +926,14 @@ async def merchant_create_deal(body: DealIn, user=Depends(get_current_merchant))
     }
     await db.deals.insert_one(doc)
     doc.pop("_id", None)
+
+    # Notify followers when the deal is publicly visible.
+    # A deal is "published" for us when it's not a draft and not paused.
+    try:
+        if not body.is_draft and not doc.get("is_paused"):
+            await _notify_followers_of_new_deal(merchant, doc)
+    except Exception as e:
+        logger.warning(f"follower notification skipped: {e}")
     return doc
 
 
@@ -791,6 +950,20 @@ async def merchant_patch_deal(deal_id: str, body: DealPatchIn, user=Depends(get_
     if updates:
         await db.deals.update_one({"id": deal_id}, {"$set": updates})
     d = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+
+    # If this update flipped the deal from hidden→publicly-visible for the
+    # first time (e.g. draft→publish, pause→resume), fan out to followers.
+    became_public = (
+        (deal.get("is_draft") and updates.get("is_draft") is False) or
+        (deal.get("is_paused") and updates.get("is_paused") is False)
+    )
+    if became_public and d and not d.get("is_draft") and not d.get("is_paused"):
+        try:
+            merchant = await db.merchants.find_one({"id": d.get("merchant_id")}, {"_id": 0})
+            if merchant:
+                await _notify_followers_of_new_deal(merchant, d)
+        except Exception as e:
+            logger.warning(f"follower notification (patch) skipped: {e}")
     return _enrich_deals([d])[0]
 
 
@@ -1960,12 +2133,100 @@ app.add_middleware(
 )
 
 
+# -------------------------------------------------------------------------
+# ONE-TIME MIGRATION: phone normalization + duplicate-user consolidation.
+# Runs on every startup; idempotent by design.
+# -------------------------------------------------------------------------
+async def _migrate_phone_and_roles() -> Dict[str, int]:
+    stats = {"backfilled": 0, "merged": 0, "reassigned": 0}
+
+    # 1. Backfill phone_normalized + roles for every user.
+    cursor = db.users.find({}, {
+        "_id": 0, "id": 1, "phone": 1, "phone_normalized": 1,
+        "role": 1, "roles": 1, "active_role": 1, "created_at": 1,
+    })
+    async for u in cursor:
+        patch: Dict[str, Any] = {}
+        norm = normalize_phone(u.get("phone"))
+        if norm and u.get("phone_normalized") != norm:
+            patch["phone_normalized"] = norm
+        if not isinstance(u.get("roles"), list) or not u["roles"]:
+            patch["roles"] = [u.get("role") or "customer"]
+        if not u.get("active_role"):
+            patch["active_role"] = u.get("role") or "customer"
+        if patch:
+            await db.users.update_one({"id": u["id"]}, {"$set": patch})
+            stats["backfilled"] += 1
+
+    # 2. Consolidate duplicates (same normalized phone).
+    dupes = await db.users.aggregate([
+        {"$match": {"phone_normalized": {"$ne": None}}},
+        {"$group": {"_id": "$phone_normalized", "ids": {"$push": "$id"}, "n": {"$sum": 1}}},
+        {"$match": {"n": {"$gt": 1}}},
+    ]).to_list(1000)
+
+    for group in dupes:
+        ids = group["ids"]
+        docs = await db.users.find({"id": {"$in": ids}}, {"_id": 0}).to_list(len(ids))
+        docs.sort(key=lambda d: d.get("created_at") or "")
+        primary = docs[0]
+        secondaries = docs[1:]
+        primary_roles = set(user_roles(primary))
+        favs = set(primary.get("favorited_merchants") or [])
+        prefs = set(primary.get("preferred_categories") or [])
+        points_delta = 0
+        for s in secondaries:
+            primary_roles.update(user_roles(s))
+            favs.update(s.get("favorited_merchants") or [])
+            prefs.update(s.get("preferred_categories") or [])
+            points_delta += int(s.get("points") or 0)
+            await db.merchants.update_many({"owner_id": s["id"]}, {"$set": {"owner_id": primary["id"]}})
+            await db.deals.update_many({"owner_id": s["id"]}, {"$set": {"owner_id": primary["id"]}})
+            await db.claims.update_many({"user_id": s["id"]}, {"$set": {"user_id": primary["id"]}})
+            await db.notifications.update_many({"user_id": s["id"]}, {"$set": {"user_id": primary["id"]}})
+            try:
+                await db.points_ledger.update_many({"user_id": s["id"]}, {"$set": {"user_id": primary["id"]}})
+            except Exception:
+                pass
+            stats["reassigned"] += 1
+        await db.users.update_one({"id": primary["id"]}, {"$set": {
+            "roles": sorted(primary_roles),
+            "role": primary.get("active_role") or primary.get("role") or "customer",
+            "favorited_merchants": sorted(favs),
+            "preferred_categories": sorted(prefs),
+            "points": int(primary.get("points") or 0) + points_delta,
+        }})
+        await db.users.delete_many({"id": {"$in": [s["id"] for s in secondaries]}})
+        stats["merged"] += len(secondaries)
+
+    # 3. Enforce uniqueness at the DB level.
+    try:
+        await db.users.create_index(
+            "phone_normalized",
+            unique=True,
+            partialFilterExpression={"phone_normalized": {"$type": "string"}},
+            name="uniq_phone_normalized",
+        )
+    except Exception as e:
+        logger.warning(f"index create (users.phone_normalized) failed: {e}")
+
+    return stats
+
+
+
 @app.on_event("startup")
 async def _startup():
     count = await db.merchants.count_documents({})
     if count == 0:
         await _do_seed(37.7749, -122.4194)
         logger.info("Auto-seeded initial merchant + deal data")
+    # ---- Phone normalization + duplicate-user consolidation ----
+    try:
+        migrated = await _migrate_phone_and_roles()
+        if migrated:
+            logger.info(f"[MIGRATION] user model: {migrated}")
+    except Exception as e:
+        logger.warning(f"user-model migration failed: {e}")
     # Admin panel: seed super admin from env (idempotent)
     try:
         from admin_panel import (

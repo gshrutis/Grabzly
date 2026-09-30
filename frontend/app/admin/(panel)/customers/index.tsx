@@ -1,5 +1,12 @@
 import React from "react";
 import { AdminList, Cell, StatusBadge } from "@/src/components/AdminList";
+import type { FilterField } from "@/src/components/FilterPanel";
+
+const FILTERS: FilterField[] = [
+  { key: "city",  type: "select", label: "City", options: [] }, // dynamic
+  { key: "since", type: "date",   label: "Joined on or after" },
+  { key: "until", type: "date",   label: "Joined on or before" },
+];
 
 export default function CustomersPage() {
   return (
@@ -7,6 +14,8 @@ export default function CustomersPage() {
       title="Customers"
       endpoint="/api/admin/customers"
       searchPlaceholder="Search by name, phone or email"
+      filterFields={FILTERS}
+      loadDynamicFilterOptions
       statuses={[
         { key: "active", label: "Active" },
         { key: "blocked", label: "Blocked" },

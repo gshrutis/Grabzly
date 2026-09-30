@@ -6,6 +6,9 @@ type User = {
   id: string;
   email: string;
   name: string;
+  role?: "customer" | "merchant" | "admin" | "super_admin";
+  roles?: string[];
+  active_role?: string;
   preferred_categories?: string[];
   favorited_merchants?: string[];
 };
@@ -19,6 +22,7 @@ type AuthContextValue = {
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   setSession: (token: string, user: User) => Promise<void>;
+  switchRole: (role: "customer" | "merchant") => Promise<void>;
 };
 
 const AuthCtx = createContext<AuthContextValue | null>(null);
@@ -89,9 +93,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(nextUser);
   }, []);
 
+  const switchRole = useCallback(async (role: "customer" | "merchant") => {
+    const res = await api.switchRole(role);
+    if (res?.user) setUser(res.user as User);
+  }, []);
+
   const value = useMemo(
-    () => ({ user, token, loading, signIn, signUp, signOut, refresh, setSession }),
-    [user, token, loading, signIn, signUp, signOut, refresh, setSession],
+    () => ({ user, token, loading, signIn, signUp, signOut, refresh, setSession, switchRole }),
+    [user, token, loading, signIn, signUp, signOut, refresh, setSession, switchRole],
   );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

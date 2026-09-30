@@ -47,6 +47,7 @@ export function StatusBadge({ status }: { status?: string }) {
     inactive:  { bg: "#EFF1F5", fg: "#606770", label: "Inactive" },
     paused:    { bg: "#FFE9D6", fg: "#B25200", label: "Paused" },
     archived:  { bg: "#EFF1F5", fg: "#606770", label: "Archived" },
+    draft:     { bg: "#EFF1F5", fg: "#606770", label: "Draft" },
     blocked:   { bg: "#FFE1E1", fg: "#B00020", label: "Blocked" },
     expired:   { bg: "#FFE9D6", fg: "#B25200", label: "Expired" },
   };

@@ -51,6 +51,15 @@ Hyper-local marketplace connecting nearby merchants (restaurants, cafes, retail)
 - ✅ AuthContext.setSession fix — OTP flow now populates user immediately
 - ✅ Admin Panel Phase 2 — Categories + Cities modules (25/25 backend tests pass)
 - ✅ Admin Panel Phase 3 — Settings module (live wired) + Global Search (19/19 backend tests pass)
+- ✅ **Audit Fix Pass** — 19/19 backend tests pass:
+  - **One mobile = one user**: normalized phone stored in `phone_normalized`, unique partial index, OTP verify looks up by normalized form, startup migration merges any pre-existing duplicates (union roles, repoint owned data).
+  - **Multi-role user**: `roles[]` + `active_role` on User; `/auth/switch-role` endpoint; onboard flips `active_role` to merchant; Profile screen shows a role switcher card when a user has both roles.
+  - **Dashboard counts**: rewritten queries — customers count via roles[] (excludes admins), active/pending/rejected merchant KPIs use verification_status + status, active_deals correctly excludes drafts/paused/expired/rejected.
+  - **Deal status column**: backend now returns `computed_status` on every admin deal listing (never empty); new statuses supported: active, expired, draft, paused, approved, pending, rejected, archived.
+  - **Admin filters**: reusable `FilterPanel` component with collapsible drawer; Category & City chips auto-populate from admin cities/categories; Merchants/Deals/Customers have server-side date range (since/until), category, city, deal_type, and multi-field search.
+  - **Cities in customer/merchant app**: `CityPicker` refetches on open; merchant onboarding shows admin-managed cities as chips (auto-fills lat/lng); customer feed & map filter by selected city.
+  - **Deal image**: detail view now uses blurred cover + `contain` fit so the entire image is visible with no cropping; compact list cards stay cover-fit.
+  - **Follow-merchant notification**: fan-out on deal publish (create-non-draft or draft→publish PATCH); marker on deal prevents duplicate notifications; owner + non-followers excluded.
 
 ## Tech Stack
 - Frontend: Expo Router, React Native, `react-native-webview` (Leaflet map), `expo-camera`, `expo-clipboard`, `expo-location`, `expo-haptics`

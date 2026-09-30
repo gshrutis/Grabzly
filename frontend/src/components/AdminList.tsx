@@ -1,10 +1,11 @@
 /** Generic admin list screen factory — DRY for Merchants/Deals/Customers. */
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { View, Text, ScrollView, StyleSheet, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import Ionicons from "@react-native-vector-icons/ionicons";
 import { useAdmin } from "@/src/context/admin-auth";
 import { Toolbar, SearchInput, Chip, StatusBadge, Pager, EmptyState, LoadingRow } from "@/src/components/AdminUI";
+import FilterPanel, { type FilterField } from "@/src/components/FilterPanel";
 import { colors, shadow } from "@/src/theme";
 
 export type Column<T> = { header: string; render: (row: T) => React.ReactNode; width?: number | string };
@@ -16,21 +17,37 @@ export function AdminList<T extends { id: string }>(props: {
   columns: Column<T>[];
   detailRoute: (id: string) => string;
   searchPlaceholder?: string;
+  filterFields?: FilterField[];
+  loadDynamicFilterOptions?: boolean;
 }) {
   const { request } = useAdmin();
   const router = useRouter();
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<string>("all");
+  const [filters, setFilters] = useState<Record<string, string>>({});
   const [skip, setSkip] = useState(0);
   const [limit] = useState(20);
   const [data, setData] = useState<any>({ items: [], total: 0 });
   const [loading, setLoading] = useState(true);
 
+  const activeFilterCount = useMemo(
+    () => Object.values(filters).filter((v) => v && v.length > 0).length,
+    [filters],
+  );
+
   const fetchNow = useCallback(() => {
     setLoading(true);
-    request(props.endpoint, { query: { q: q || undefined, status: status === "all" ? undefined : status, skip, limit } })
+    const query: Record<string, any> = {
+      q: q || undefined,
+      status: status === "all" ? undefined : status,
+      skip, limit,
+    };
+    for (const [k, v] of Object.entries(filters)) {
+      if (v && v.length > 0) query[k] = v;
+    }
+    request(props.endpoint, { query })
       .then(setData).finally(() => setLoading(false));
-  }, [q, status, skip, limit, props.endpoint, request]);
+  }, [q, status, skip, limit, filters, props.endpoint, request]);
 
   useEffect(() => { const id = setTimeout(fetchNow, 250); return () => clearTimeout(id); }, [fetchNow]);
 
@@ -43,6 +60,16 @@ export function AdminList<T extends { id: string }>(props: {
         {props.statuses.map((s) => (
           <Chip key={s.key} label={s.label} active={status === s.key} onPress={() => { setStatus(s.key); setSkip(0); }} testID={`chip-${s.key}`} />
         ))}
+        {props.filterFields && props.filterFields.length > 0 && (
+          <FilterPanel
+            fields={props.filterFields}
+            value={filters}
+            activeCount={activeFilterCount}
+            loadDynamicOptions={props.loadDynamicFilterOptions}
+            onApply={(next) => { setFilters(next); setSkip(0); }}
+            onReset={() => { setFilters({}); setSkip(0); }}
+          />
+        )}
       </Toolbar>
 
       <View style={styles.tableCard}>

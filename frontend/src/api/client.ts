@@ -164,6 +164,8 @@ export const api = {
       body: { phone, code, name, referral_code },
     }),
   me: () => request("/auth/me", { auth: true }),
+  switchRole: (role: "customer" | "merchant") =>
+    request<any>("/auth/switch-role", { method: "POST", body: { role }, auth: true }),
   updateMe: (patch: { name?: string; preferred_categories?: string[] }) =>
     request("/auth/me", { method: "PATCH", body: patch, auth: true }),
 

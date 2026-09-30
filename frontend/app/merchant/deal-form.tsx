@@ -294,7 +294,11 @@ export default function DealForm() {
               <Text style={styles.pickHint}>Uploading…</Text>
             </View>
           ) : image ? (
-            <Image source={{ uri: image }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
+            <>
+              <Image source={{ uri: image }} style={StyleSheet.absoluteFillObject} contentFit="cover" blurRadius={18} />
+              <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(0,0,0,0.25)" }]} />
+              <Image source={{ uri: image }} style={StyleSheet.absoluteFillObject} contentFit="contain" />
+            </>
           ) : (
             <View style={{ alignItems: "center", gap: 6 }}>
               <Ionicons name="camera" size={26} color={colors.muted} />

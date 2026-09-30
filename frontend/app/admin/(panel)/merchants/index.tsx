@@ -1,13 +1,23 @@
 import React from "react";
 import { Text, View } from "react-native";
 import { AdminList, Cell, StatusBadge } from "@/src/components/AdminList";
+import type { FilterField } from "@/src/components/FilterPanel";
+
+const FILTERS: FilterField[] = [
+  { key: "category", type: "select", label: "Category", options: [] },  // dynamic
+  { key: "city",     type: "select", label: "City",     options: [] },  // dynamic
+  { key: "since",    type: "date",   label: "Registered on or after" },
+  { key: "until",    type: "date",   label: "Registered on or before" },
+];
 
 export default function MerchantsPage() {
   return (
     <AdminList
       title="Merchants"
       endpoint="/api/admin/merchants"
-      searchPlaceholder="Search by name or phone"
+      searchPlaceholder="Search by name, phone, email or address"
+      filterFields={FILTERS}
+      loadDynamicFilterOptions
       statuses={[
         { key: "pending", label: "Pending" },
         { key: "active", label: "Active" },

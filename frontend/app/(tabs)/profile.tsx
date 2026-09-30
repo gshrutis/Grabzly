@@ -17,7 +17,7 @@ import LocationPickerModal from "@/src/components/LocationPickerModal";
 export default function Profile() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user, signOut, refresh } = useAuth();
+  const { user, signOut, refresh, switchRole } = useAuth();
   const { loc } = useLocation();
   const [cats, setCats] = useState<any[]>([]);
   const [preferred, setPreferred] = useState<Set<string>>(new Set());
@@ -142,6 +142,46 @@ export default function Profile() {
           </>
         )}
       </View>
+
+      {/* ROLE SWITCHER — visible when user has more than one role */}
+      {user && Array.isArray((user as any).roles) && (user as any).roles.length > 1 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Account mode</Text>
+          <View style={styles.roleSwitchCard}>
+            {(["customer", "merchant"] as const).map((r) => {
+              const active = ((user as any).active_role || (user as any).role) === r;
+              const has = ((user as any).roles as string[]).includes(r);
+              return (
+                <TouchableOpacity
+                  key={r}
+                  testID={`role-switch-${r}`}
+                  disabled={!has || active}
+                  onPress={async () => {
+                    Haptics.selectionAsync().catch(() => {});
+                    try {
+                      await switchRole(r);
+                      if (r === "merchant") router.replace("/merchant/(tabs)" as any);
+                      else router.replace("/(tabs)");
+                    } catch {}
+                  }}
+                  activeOpacity={0.9}
+                  style={[styles.roleSwitchBtn, active && styles.roleSwitchBtnActive, !has && { opacity: 0.4 }]}
+                >
+                  <Ionicons name={r === "customer" ? "person-circle" : "storefront"} size={18}
+                    color={active ? colors.white : colors.brand} />
+                  <Text style={[styles.roleSwitchText, active && { color: colors.white }]}>
+                    {r === "customer" ? "Customer" : "Merchant"}
+                  </Text>
+                  {active && <View style={styles.roleActiveDot} />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={styles.roleHint}>
+            You have multiple roles on this account. Switching won&apos;t create a new account.
+          </Text>
+        </View>
+      )}
 
       {/* LOYALTY */}
       {user && (
@@ -422,6 +462,12 @@ const styles = StyleSheet.create({
   authBtnSecondaryText: { color: colors.brand, fontWeight: "800", fontSize: 14 },
 
   section: { padding: spacing.lg, gap: spacing.md },
+  roleSwitchCard: { flexDirection: "row", gap: spacing.sm, backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, padding: spacing.sm },
+  roleSwitchBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 44, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  roleSwitchBtnActive: { backgroundColor: colors.brand, borderColor: colors.brand },
+  roleSwitchText: { fontSize: 13, fontWeight: "800", color: colors.onSurface },
+  roleActiveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.white, marginLeft: 4 },
+  roleHint: { fontSize: 11, color: colors.muted, fontWeight: "600", marginTop: -4 },
   sectionTitle: {
     fontSize: 16, fontWeight: "800", color: colors.onSurface,
   },

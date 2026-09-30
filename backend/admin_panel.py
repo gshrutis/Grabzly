@@ -161,32 +161,57 @@ async def dashboard(range: str = Query("30d", pattern="^(today|7d|30d|90d|all)$"
     now_iso = datetime.now(timezone.utc).isoformat()
     today_start = _range_start("today").isoformat()
 
+    # A user is a "customer" if either the new `roles` array contains "customer"
+    # OR (backward-compat) the legacy `role` is "customer". Admins are excluded.
+    CUSTOMER_MATCH: Dict[str, Any] = {
+        "$or": [{"roles": "customer"}, {"role": "customer"}],
+        "role": {"$nin": ["admin", "super_admin"]},
+    }
+    NOT_BLOCKED = {"status": {"$ne": "blocked"}}
+    ACTIVE_MERCHANT = {"$or": [
+        {"status": "active"},
+        {"verification_status": {"$in": ["approved", "verified"]}},
+    ]}
+    PENDING_MERCHANT = {"$or": [
+        {"status": "pending"},
+        {"verification_status": "pending"},
+    ]}
+    # Public/live-deal filter: not draft/paused/deleted and not expired.
+    LIVE_DEAL = {
+        "is_draft": {"$ne": True},
+        "is_paused": {"$ne": True},
+        "deleted": {"$ne": True},
+        "expires_at": {"$gt": now_iso},
+        "status": {"$nin": ["archived", "rejected"]},
+    }
+
     (
         total_customers, active_customers, new_customers,
-        total_merchants, active_merchants, pending_merchants, new_merchants,
+        total_merchants, active_merchants, pending_merchants, rejected_merchants, new_merchants,
         total_deals, active_deals, pending_deals, expired_deals, new_deals,
     ) = await asyncio.gather(
-        db.users.count_documents({"role": "customer"}),
-        db.users.count_documents({"role": "customer", "status": {"$ne": "blocked"}}),
-        db.users.count_documents({"role": "customer", "created_at": {"$gte": start}}),
+        db.users.count_documents(CUSTOMER_MATCH),
+        db.users.count_documents({**CUSTOMER_MATCH, **NOT_BLOCKED}),
+        db.users.count_documents({**CUSTOMER_MATCH, "created_at": {"$gte": start}}),
         db.merchants.count_documents({}),
-        db.merchants.count_documents({"$or": [{"status": "active"}, {"verification_status": "approved"}]}),
-        db.merchants.count_documents({"$or": [{"status": "pending"}, {"verification_status": "pending"}]}),
+        db.merchants.count_documents(ACTIVE_MERCHANT),
+        db.merchants.count_documents(PENDING_MERCHANT),
+        db.merchants.count_documents({"$or": [{"status": "rejected"}, {"verification_status": "rejected"}]}),
         db.merchants.count_documents({"created_at": {"$gte": start}}),
-        db.deals.count_documents({}),
-        db.deals.count_documents({"expires_at": {"$gt": now_iso}, "status": {"$ne": "archived"}}),
-        db.deals.count_documents({"status": "pending"}),
-        db.deals.count_documents({"expires_at": {"$lte": now_iso}}),
-        db.deals.count_documents({"created_at": {"$gte": start}}),
+        db.deals.count_documents({"deleted": {"$ne": True}}),
+        db.deals.count_documents(LIVE_DEAL),
+        db.deals.count_documents({"status": "pending", "deleted": {"$ne": True}}),
+        db.deals.count_documents({"expires_at": {"$lte": now_iso}, "deleted": {"$ne": True}}),
+        db.deals.count_documents({"created_at": {"$gte": start}, "deleted": {"$ne": True}}),
     )
     today_new = await asyncio.gather(
-        db.users.count_documents({"role": "customer", "created_at": {"$gte": today_start}}),
+        db.users.count_documents({**CUSTOMER_MATCH, "created_at": {"$gte": today_start}}),
         db.merchants.count_documents({"created_at": {"$gte": today_start}}),
-        db.deals.count_documents({"created_at": {"$gte": today_start}}),
+        db.deals.count_documents({"created_at": {"$gte": today_start}, "deleted": {"$ne": True}}),
     )
 
     deals_by_cat = await db.deals.aggregate([
-        {"$match": {"created_at": {"$gte": start}}},
+        {"$match": {"created_at": {"$gte": start}, "deleted": {"$ne": True}}},
         {"$group": {"_id": "$category", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
     ]).to_list(20)
@@ -194,19 +219,27 @@ async def dashboard(range: str = Query("30d", pattern="^(today|7d|30d|90d|all)$"
         {"$group": {"_id": {"$ifNull": ["$city", "Unknown"]}, "count": {"$sum": 1}}},
         {"$sort": {"count": -1}}, {"$limit": 10},
     ]).to_list(20)
-    growth = await db.users.aggregate([
-        {"$match": {"role": {"$in": ["customer", "merchant"]}, "created_at": {"$gte": start}}},
-        {"$group": {"_id": {"$substr": ["$created_at", 0, 10]},
-                    "customers": {"$sum": {"$cond": [{"$eq": ["$role", "customer"]}, 1, 0]}},
-                    "merchants": {"$sum": {"$cond": [{"$eq": ["$role", "merchant"]}, 1, 0]}}}},
-        {"$sort": {"_id": 1}},
-    ]).to_list(200)
+    # Growth chart: customers by created_at (via users), merchants by created_at
+    # (via merchants collection — the source of truth for who's a merchant).
+    growth_customers = await db.users.aggregate([
+        {"$match": {**CUSTOMER_MATCH, "created_at": {"$gte": start}}},
+        {"$group": {"_id": {"$substr": ["$created_at", 0, 10]}, "n": {"$sum": 1}}},
+    ]).to_list(400)
+    growth_merchants = await db.merchants.aggregate([
+        {"$match": {"created_at": {"$gte": start}}},
+        {"$group": {"_id": {"$substr": ["$created_at", 0, 10]}, "n": {"$sum": 1}}},
+    ]).to_list(400)
+    dates: Dict[str, Dict[str, int]] = defaultdict(lambda: {"customers": 0, "merchants": 0})
+    for r in growth_customers: dates[r["_id"]]["customers"] = r["n"]
+    for r in growth_merchants: dates[r["_id"]]["merchants"] = r["n"]
+    growth = [{"date": d, **dates[d]} for d in sorted(dates.keys())]
 
     return {
         "range": range,
         "kpis": {
             "total_customers": total_customers, "active_customers": active_customers, "new_customers": new_customers,
-            "total_merchants": total_merchants, "active_merchants": active_merchants, "pending_merchants": pending_merchants,
+            "total_merchants": total_merchants, "active_merchants": active_merchants,
+            "pending_merchants": pending_merchants, "rejected_merchants": rejected_merchants,
             "new_merchants": new_merchants, "total_deals": total_deals, "active_deals": active_deals,
             "pending_deals": pending_deals, "expired_deals": expired_deals, "new_deals": new_deals,
             "today": {"new_customers": today_new[0], "new_merchants": today_new[1], "new_deals": today_new[2]},
@@ -214,7 +247,7 @@ async def dashboard(range: str = Query("30d", pattern="^(today|7d|30d|90d|all)$"
         "charts": {
             "deals_by_category": [{"category": r["_id"], "count": r["count"]} for r in deals_by_cat],
             "merchants_by_city": [{"city": r["_id"], "count": r["count"]} for r in merchants_by_city],
-            "growth": [{"date": r["_id"], "customers": r["customers"], "merchants": r["merchants"]} for r in growth],
+            "growth": growth,
         },
     }
 
@@ -229,22 +262,29 @@ def _paged(skip: int, limit: int, total: int, items: list) -> dict:
 async def list_merchants(
     status_: Optional[str] = Query(None, alias="status"),
     category: Optional[str] = None, city: Optional[str] = None,
-    q: Optional[str] = None, since: Optional[str] = None,
+    q: Optional[str] = None,
+    since: Optional[str] = None, until: Optional[str] = None,
     sort: str = "-created_at", skip: int = 0, limit: int = 20,
     _admin=Depends(require_admin),
 ):
     db = _db()
     limit = min(max(1, limit), 50)
     query: Dict[str, Any] = {}
+    and_clauses: List[Dict[str, Any]] = []
     if status_:
-        query["$or"] = [{"status": status_}, {"verification_status": status_}]
+        and_clauses.append({"$or": [{"status": status_}, {"verification_status": status_}]})
     if category: query["category"] = category
-    if city: query["city"] = {"$regex": city, "$options": "i"}
+    if city: query["city"] = {"$regex": re.escape(city), "$options": "i"}
     if q:
-        or_add = [{"name": {"$regex": q, "$options": "i"}},
-                  {"phone": {"$regex": q, "$options": "i"}}]
-        query["$or"] = query.get("$or", []) + or_add
-    if since: query["created_at"] = {"$gte": since}
+        pat = {"$regex": re.escape(q), "$options": "i"}
+        and_clauses.append({"$or": [{"name": pat}, {"phone": pat}, {"email": pat}, {"address": pat}]})
+    if since or until:
+        rng = {}
+        if since: rng["$gte"] = since
+        if until: rng["$lte"] = until
+        query["created_at"] = rng
+    if and_clauses:
+        query["$and"] = and_clauses
     total = await db.merchants.count_documents(query)
     sort_dir = -1 if sort.startswith("-") else 1
     items = await db.merchants.find(query, {"_id": 0}).sort(sort.lstrip("-"), sort_dir).skip(skip).limit(limit).to_list(limit)
@@ -311,32 +351,66 @@ async def set_merchant_status(merchant_id: str, body: MerchantStatusIn,
 
 
 # ---------- DEALS ---------------------------------------------------------
+def _compute_deal_status(d: dict, now_iso: str) -> str:
+    """Return a stable human-readable status for a deal, computed from the
+    persisted fields. Never returns empty."""
+    if d.get("deleted"): return "archived"
+    if (d.get("status") or "") in ("rejected", "archived", "pending", "paused"):
+        return d["status"]
+    if d.get("is_draft"): return "draft"
+    if d.get("is_paused"): return "paused"
+    exp = d.get("expires_at")
+    if exp and exp <= now_iso: return "expired"
+    # If admin explicitly approved, prefer that label; otherwise it's live.
+    if (d.get("status") or "") == "approved":
+        return "approved"
+    return "active"
+
+
 @admin.get("/deals")
 async def list_deals(
     status_: Optional[str] = Query(None, alias="status"),
     category: Optional[str] = None, merchant_id: Optional[str] = None,
-    city: Optional[str] = None, q: Optional[str] = None, since: Optional[str] = None,
+    city: Optional[str] = None, q: Optional[str] = None,
+    deal_type: Optional[str] = None,
+    since: Optional[str] = None, until: Optional[str] = None,
     sort: str = "-created_at", skip: int = 0, limit: int = 20,
     _admin=Depends(require_admin),
 ):
     db = _db()
     limit = min(max(1, limit), 50)
     now_iso = datetime.now(timezone.utc).isoformat()
-    query: Dict[str, Any] = {}
+    query: Dict[str, Any] = {"deleted": {"$ne": True}}
     if status_ == "active":
-        query = {"expires_at": {"$gt": now_iso}, "status": {"$ne": "archived"}}
+        query.update({
+            "expires_at": {"$gt": now_iso},
+            "is_draft": {"$ne": True},
+            "is_paused": {"$ne": True},
+            "status": {"$nin": ["archived", "rejected", "pending"]},
+        })
     elif status_ == "expired":
-        query = {"expires_at": {"$lte": now_iso}}
+        query["expires_at"] = {"$lte": now_iso}
+    elif status_ == "draft":
+        query["is_draft"] = True
     elif status_:
         query["status"] = status_
     if category: query["category"] = category
     if merchant_id: query["merchant_id"] = merchant_id
-    if city: query["city"] = {"$regex": city, "$options": "i"}
-    if q: query["title"] = {"$regex": q, "$options": "i"}
-    if since: query.setdefault("created_at", {})["$gte"] = since
+    if deal_type: query["deal_type"] = deal_type
+    if city: query["city"] = {"$regex": re.escape(city), "$options": "i"}
+    if q:
+        pat = {"$regex": re.escape(q), "$options": "i"}
+        query["$or"] = [{"title": pat}, {"description": pat}, {"merchant_name": pat}]
+    if since or until:
+        rng = {}
+        if since: rng["$gte"] = since
+        if until: rng["$lte"] = until
+        query["created_at"] = rng
     sort_dir = -1 if sort.startswith("-") else 1
     total = await db.deals.count_documents(query)
     items = await db.deals.find(query, {"_id": 0}).sort(sort.lstrip("-"), sort_dir).skip(skip).limit(limit).to_list(limit)
+    for it in items:
+        it["computed_status"] = _compute_deal_status(it, now_iso)
     return _paged(skip, limit, total, items)
 
 
@@ -388,21 +462,30 @@ async def set_deal_status(deal_id: str, body: DealStatusIn,
 async def list_customers(
     status_: Optional[str] = Query(None, alias="status"),
     city: Optional[str] = None, q: Optional[str] = None,
-    since: Optional[str] = None, sort: str = "-created_at",
+    since: Optional[str] = None, until: Optional[str] = None,
+    sort: str = "-created_at",
     skip: int = 0, limit: int = 20, _admin=Depends(require_admin),
 ):
     db = _db()
     limit = min(max(1, limit), 50)
-    query: Dict[str, Any] = {"role": "customer"}
+    # A user is a customer if either the new roles array or legacy role includes it;
+    # explicitly exclude admin/super_admin.
+    query: Dict[str, Any] = {
+        "$or": [{"roles": "customer"}, {"role": "customer"}],
+        "role": {"$nin": ["admin", "super_admin"]},
+    }
     if status_: query["status"] = status_
-    if city: query["city"] = {"$regex": city, "$options": "i"}
+    if city: query["city"] = {"$regex": re.escape(city), "$options": "i"}
     if q:
-        query["$or"] = [
-            {"name": {"$regex": q, "$options": "i"}},
-            {"phone": {"$regex": q, "$options": "i"}},
-            {"email": {"$regex": q, "$options": "i"}},
-        ]
-    if since: query["created_at"] = {"$gte": since}
+        pat = {"$regex": re.escape(q), "$options": "i"}
+        # Merge additional filter as $and to avoid clobbering our role-based $or.
+        query["$and"] = [{"$or": [{"name": pat}, {"phone": pat},
+                                   {"phone_normalized": pat}, {"email": pat}]}]
+    if since or until:
+        rng = {}
+        if since: rng["$gte"] = since
+        if until: rng["$lte"] = until
+        query["created_at"] = rng
     total = await db.users.count_documents(query)
     sort_dir = -1 if sort.startswith("-") else 1
     items = await db.users.find(query, {"_id": 0, "password_hash": 0, "otp_code": 0}
@@ -413,8 +496,10 @@ async def list_customers(
 @admin.get("/customers/{user_id}")
 async def customer_details(user_id: str, _admin=Depends(require_admin)):
     db = _db()
-    u = await db.users.find_one({"id": user_id, "role": "customer"},
-                                 {"_id": 0, "password_hash": 0, "otp_code": 0})
+    u = await db.users.find_one(
+        {"id": user_id, "$or": [{"roles": "customer"}, {"role": "customer"}]},
+        {"_id": 0, "password_hash": 0, "otp_code": 0},
+    )
     if not u: raise HTTPException(404, "Customer not found")
     claims = await db.claims.count_documents({"user_id": user_id})
     redeems = await db.claims.count_documents({"user_id": user_id, "status": "redeemed"})
@@ -432,9 +517,11 @@ async def set_customer_status(user_id: str, body: CustomerStatusIn,
     db = _db()
     if body.status not in {"active", "blocked", "deactivated"}:
         raise HTTPException(400, "Invalid status")
-    res = await db.users.update_one({"id": user_id, "role": "customer"},
-                                     {"$set": {"status": body.status,
-                                                "updated_at": datetime.now(timezone.utc).isoformat()}})
+    res = await db.users.update_one(
+        {"id": user_id, "$or": [{"roles": "customer"}, {"role": "customer"}]},
+        {"$set": {"status": body.status,
+                  "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
     if res.matched_count == 0:
         raise HTTPException(404, "Customer not found")
     await db.audit_log.insert_one({
