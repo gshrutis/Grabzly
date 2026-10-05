@@ -198,7 +198,8 @@ export const api = {
   }) => request<any[]>("/deals", { query }),
   liveNow: (query?: { lat?: number; lng?: number }) =>
     request<any[]>("/deals/live-now", { query }),
-  reels: () => request<any[]>("/deals/reels"),
+  reels: (query?: { lat?: number; lng?: number; city?: string }) =>
+  request<any[]>("/deals/reels", { query }),
   getDeal: (id: string, query?: { lat?: number; lng?: number }) =>
     request<any>(`/deals/${id}`, { query }),
   claimDeal: (id: string) =>

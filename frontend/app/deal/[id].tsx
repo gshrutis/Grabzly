@@ -37,6 +37,19 @@ export default function DealDetail() {
   });
 
   useEffect(() => {
+  if (!deal?.video_url) return;
+
+  try {
+    player.replace(deal.video_url);
+    player.loop = true;
+    player.muted = videoMuted;
+    player.play();
+  } catch (e) {
+    console.warn("Deal video playback error:", e);
+  }
+}, [deal?.video_url, player]);
+
+  useEffect(() => {
     (async () => {
       try {
         const d = await api.getDeal(id, { lat: loc.lat, lng: loc.lng });

@@ -215,7 +215,13 @@ export default function DealForm() {
       } else {
         await api.merchantCreateDeal(body);
       }
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      
+Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+if (router.canGoBack()) {
+  router.back();
+} else {
+  router.replace("/merchant");
+}
       router.back();
     } catch (e: any) {
       setError(e.message || "Save failed");

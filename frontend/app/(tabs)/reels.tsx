@@ -10,6 +10,7 @@ import { useVideoPlayer, VideoView } from "expo-video";
 import { Image } from "expo-image";
 import { api } from "@/src/api/client";
 import { colors, radius, spacing } from "@/src/theme";
+import { useLocation } from "@/src/context/location";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
@@ -113,9 +114,10 @@ function ReelItem({ deal, active, tabBarHeight }: { deal: Deal; active: boolean;
     </View>
   );
 }
-
 export default function ReelsView() {
   const insets = useSafeAreaInsets();
+  const { loc, selectedCity } = useLocation();
+
   const tabBarHeight = 60 + insets.bottom;
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,12 +127,16 @@ export default function ReelsView() {
   useEffect(() => {
     (async () => {
       try {
-        const d = await api.reels();
+        const d = await api.reels({
+  lat: selectedCity?.lat ?? loc.lat,
+  lng: selectedCity?.lng ?? loc.lng,
+  city: selectedCity?.name,
+});
         setDeals(d);
       } catch (e) { console.warn(e); }
       setLoading(false);
     })();
-  }, []);
+  }, [loc, selectedCity]);
 
   if (loading) {
     return (
@@ -163,10 +169,17 @@ export default function ReelsView() {
         snapToAlignment="start"
         decelerationRate="fast"
         snapToInterval={SCREEN_H - tabBarHeight}
-        onMomentumScrollEnd={(e) => {
-          const idx = Math.round(e.nativeEvent.contentOffset.y / (SCREEN_H - tabBarHeight));
-          setActiveIndex(idx);
-        }}
+        onScroll={(e) => {
+  const height = SCREEN_H - tabBarHeight;
+  const index = Math.round(
+    e.nativeEvent.contentOffset.y / height
+  );
+
+  if (index !== activeIndex) {
+    setActiveIndex(index);
+  }
+}}
+scrollEventThrottle={16}
       />
     </View>
   );

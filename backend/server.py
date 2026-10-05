@@ -1119,11 +1119,52 @@ async def deals_live_now(lat: Optional[float] = None, lng: Optional[float] = Non
 
 
 @api.get("/deals/reels")
-async def deals_reels():
-    q = _public_filter({"video_url": {"$ne": None, "$exists": True}})
+async def deals_reels(
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
+    city: Optional[str] = None,
+):
+    q = _public_filter({
+        "video_url": {"$ne": None, "$exists": True},
+    })
+
     deals = await db.deals.find(q, {"_id": 0}).to_list(200)
     deals = _enrich_deals(deals)
+
+    # Remove expired deals
     deals = [d for d in deals if not d.get("expired")]
+
+    # City geo-filter — same logic as /deals
+    city_doc = await _resolve_city(city)
+    if city_doc:
+        r = city_doc.get("radius_km", 25)
+        deals = [
+            d for d in deals
+            if isinstance(d.get("lat"), (int, float))
+            and isinstance(d.get("lng"), (int, float))
+            and haversine_km(
+                city_doc["lat"],
+                city_doc["lng"],
+                d["lat"],
+                d["lng"],
+            ) <= r
+        ]
+
+    # Calculate distance from selected/current location
+    if lat is not None and lng is not None:
+        for d in deals:
+            d["distance_km"] = round(
+                haversine_km(
+                    lat,
+                    lng,
+                    d.get("lat", lat),
+                    d.get("lng", lng),
+                ),
+                2,
+            )
+
+        deals.sort(key=lambda d: d.get("distance_km", 999))
+
     return deals
 
 

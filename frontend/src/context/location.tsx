@@ -144,10 +144,15 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setManual = useCallback(async (lat: number, lng: number, label: string) => {
-    const next: LocationState = { lat, lng, label, isFallback: true };
-    setLoc(next);
-    await storage.setItem(LOC_KEY, JSON.stringify(next));
-  }, []);
+  const next: LocationState = { lat, lng, label, isFallback: true };
+
+  // Manual map location takes priority over any previously selected city.
+  setLoc(next);
+  setSelectedCityState(null);
+
+  await storage.setItem(LOC_KEY, JSON.stringify(next));
+  await storage.removeItem(CITY_KEY);
+}, []);
 
   const value = useMemo(
     () => ({ loc, granted, canAskAgain, requesting, requestPermission, setManual,
