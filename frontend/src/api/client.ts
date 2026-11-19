@@ -1,7 +1,9 @@
 import { Platform } from "react-native";
 import { storage } from "@/src/utils/storage";
+import { File as ExpoFile } from "expo-file-system";
+import { fetch as expoFetch } from "expo/fetch";
 
-const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL || "http://192.168.1.6:8000";
 export const TOKEN_KEY = "hh_session_token";
 
 /**
@@ -13,10 +15,19 @@ export const TOKEN_KEY = "hh_session_token";
  */
 export function resolveMediaUrl<T extends string | null | undefined>(u: T): T {
   if (!u || typeof u !== "string") return u;
+
+  const localUrlPattern = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?/i;
+
+  if (localUrlPattern.test(u)) {
+    return u.replace(localUrlPattern, BASE_URL) as T;
+  }
+
   if (u.startsWith("/api/") || u.startsWith("/media/")) {
     return (`${BASE_URL}${u.startsWith("/media/") ? "/api" : ""}${u}`) as T;
   }
+
   return u;
+
 }
 
 // Recursively rewrite common media-carrying fields so downstream code
@@ -95,47 +106,72 @@ export const api = {
   //     accepts `{uri,name,type}` and streams the file from disk; a Blob
   //     would fail to serialize on native.
   uploadMedia: async (fileUri: string, mimeType: string, name?: string) => {
-    if (!fileUri || typeof fileUri !== "string") {
-      throw new Error("uploadMedia requires a file URI string");
-    }
-    const filename = name || `upload_${Date.now()}.${(mimeType.split("/")[1] || "bin").split(";")[0]}`;
-    const form = new FormData();
+  if (!fileUri || typeof fileUri !== "string") {
+    throw new Error("uploadMedia requires a file URI string");
+  }
 
-    if (Platform.OS === "web") {
-      // Convert the (blob: / data: / http:) URL to an actual File/Blob before append.
-      const blob = await (await fetch(fileUri)).blob();
-      // Use File where possible so `filename` is preserved end-to-end.
-      const file: any = typeof File !== "undefined"
+  const filename =
+    name ||
+    `upload_${Date.now()}.${(mimeType.split("/")[1] || "bin").split(";")[0]}`;
+
+  const form = new FormData();
+
+  if (Platform.OS === "web") {
+    // Keep existing web upload behavior unchanged
+    const blob = await (await fetch(fileUri)).blob();
+
+    const file: any =
+      typeof File !== "undefined"
         ? new File([blob], filename, { type: mimeType || blob.type })
         : blob;
-      form.append("file", file, filename);
-    } else {
-      // Native: the RN FormData polyfill reads `{ uri, name, type }` and streams
-      // the file from disk directly — DO NOT wrap this in JSON.
-      form.append("file", { uri: fileUri, name: filename, type: mimeType } as any);
-    }
 
-    const token = await storage.secureGet<string>(TOKEN_KEY, "");
-    const res = await fetch(`${BASE_URL}/api/upload`, {
-      method: "POST",
-      headers: {
-        // IMPORTANT: do NOT set Content-Type manually — fetch will set
-        // `multipart/form-data; boundary=…` correctly from the FormData body.
-        // Setting it here (e.g. `application/json`) is what caused the
-        // previous "sending plain object" symptom.
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: form as any,
-    });
-    const text = await res.text();
-    const data = text ? JSON.parse(text) : null;
-    if (!res.ok) {
-      const detail = data?.detail ?? `Upload failed (${res.status})`;
-      throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
-    }
-    // Return an absolute URL so <Image>/<Video> can render across clients
-    return { ...data, url: resolveMediaUrl(data.url) } as { url: string; filename: string; bytes: number; content_type: string };
-  },
+    form.append("file", file, filename);
+  } else {
+    // Native Android/iOS upload using Expo File
+    const nativeFile = new ExpoFile(fileUri);
+    form.append("file", nativeFile, filename);
+  }
+
+  const token = await storage.secureGet<string>(TOKEN_KEY, "");
+
+  const url = `${BASE_URL}/api/upload`;
+  const headers = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  const res =
+    Platform.OS === "web"
+      ? await fetch(url, {
+          method: "POST",
+          headers,
+          body: form,
+        })
+      : await expoFetch(url, {
+          method: "POST",
+          headers,
+          body: form,
+        });
+
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+
+  if (!res.ok) {
+    const detail = data?.detail ?? `Upload failed (${res.status})`;
+    throw new Error(
+      typeof detail === "string" ? detail : JSON.stringify(detail)
+    );
+  }
+
+  return {
+    ...data,
+    url: resolveMediaUrl(data.url),
+  } as {
+    url: string;
+    filename: string;
+    bytes: number;
+    content_type: string;
+  };
+},
 
   // Auth
   register: (email: string, password: string, name: string, referral_code?: string) =>

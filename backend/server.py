@@ -45,12 +45,12 @@ MEDIA_DIR.mkdir(exist_ok=True, parents=True)
 app.mount("/api/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
 api = APIRouter(prefix="/api")
 
-# Object storage bootstrap — non-fatal if unavailable at boot.
+# Object storage bootstrap ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â non-fatal if unavailable at boot.
 from object_storage import (
     init_storage, put_object, get_object, build_object_path,
     StorageUnavailable, StorageOutOfCredits, StorageError,
 )
-
+import r2_storage
 
 @app.on_event("startup")
 async def _boot_storage():
@@ -475,7 +475,7 @@ async def login(body: LoginIn):
 
 
 # =========================================================================
-# OTP (mock — always accepts "123456" or the most recently requested code)
+# OTP (mock ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â always accepts "123456" or the most recently requested code)
 # =========================================================================
 DEMO_OTP = "123456"
 
@@ -545,7 +545,7 @@ async def otp_verify(body: OtpVerifyIn):
             logger.warning(f"OTP insert race, re-reading existing user: {e}")
             user_doc = await db.users.find_one({"phone_normalized": phone})
             if not user_doc:
-                raise HTTPException(status_code=500, detail="Auth conflict — please retry")
+                raise HTTPException(status_code=500, detail="Auth conflict ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â please retry")
         user = user_doc
     else:
         # Heal legacy accounts on the fly: ensure phone_normalized + roles are set.
@@ -585,7 +585,7 @@ async def me(user=Depends(get_current_user)):
 @api.post("/auth/switch-role")
 async def switch_active_role(body: Dict[str, Any] = Body(...), user=Depends(get_current_user)):
     """Change the active role for the current session. The user must already
-    have the requested role in their `roles` array — we never grant it here."""
+    have the requested role in their `roles` array ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â we never grant it here."""
     role = str(body.get("role", "")).strip()
     if role not in {"customer", "merchant"}:
         raise HTTPException(status_code=400, detail="role must be 'customer' or 'merchant'")
@@ -684,7 +684,7 @@ async def list_categories():
 
 
 # =========================================================================
-# CITIES (public — read only; admin manages via /api/admin/cities)
+# CITIES (public ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â read only; admin manages via /api/admin/cities)
 # =========================================================================
 @api.get("/cities")
 async def list_cities_public(lat: Optional[float] = None, lng: Optional[float] = None):
@@ -824,7 +824,7 @@ async def merchant_onboard(body: MerchantOnboardIn, user=Depends(get_current_use
         doc["created_at"] = iso(now_utc())
         await db.merchants.insert_one(doc)
 
-    # Elevate role — add "merchant" to the roles set, keep any existing roles
+    # Elevate role ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â add "merchant" to the roles set, keep any existing roles
     # (e.g. "customer") so one mobile stays as one user with multiple roles.
     # Also flip active_role so the user lands in merchant mode immediately.
     await db.users.update_one(
@@ -951,8 +951,8 @@ async def merchant_patch_deal(deal_id: str, body: DealPatchIn, user=Depends(get_
         await db.deals.update_one({"id": deal_id}, {"$set": updates})
     d = await db.deals.find_one({"id": deal_id}, {"_id": 0})
 
-    # If this update flipped the deal from hidden→publicly-visible for the
-    # first time (e.g. draft→publish, pause→resume), fan out to followers.
+    # If this update flipped the deal from hiddenÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢publicly-visible for the
+    # first time (e.g. draftÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢publish, pauseÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢resume), fan out to followers.
     became_public = (
         (deal.get("is_draft") and updates.get("is_draft") is False) or
         (deal.get("is_paused") and updates.get("is_paused") is False)
@@ -1069,7 +1069,7 @@ async def list_deals(
     deals = await db.deals.find(query, {"_id": 0}).to_list(500)
     deals = _enrich_deals(deals)
 
-    # City geo-filter (based on deal.lat/lng — falls back to merchant lat via
+    # City geo-filter (based on deal.lat/lng ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â falls back to merchant lat via
     # the seeded fields; deals without coords are dropped when city is set).
     city_doc = await _resolve_city(city)
     if city_doc:
@@ -1134,7 +1134,7 @@ async def deals_reels(
     # Remove expired deals
     deals = [d for d in deals if not d.get("expired")]
 
-    # City geo-filter — same logic as /deals
+    # City geo-filter ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â same logic as /deals
     city_doc = await _resolve_city(city)
     if city_doc:
         r = city_doc.get("radius_km", 25)
@@ -1262,7 +1262,7 @@ async def claim_deal(deal_id: str, user=Depends(get_current_user)):
     await add_notification(
         user["id"],
         "claim_created",
-        "Deal claimed 🎉",
+        "Deal claimed ÃƒÂ°Ã…Â¸Ã…Â½Ã¢â‚¬Â°",
         f"Show your QR code at {deal.get('merchant_name') or 'the store'} to redeem \"{deal['title']}\".",
         {"claim_id": claim_id, "deal_id": deal_id, "merchant_id": deal["merchant_id"]},
     )
@@ -1457,7 +1457,7 @@ async def merchant_redeem(body: RedeemIn, user=Depends(get_current_merchant)):
     await add_notification(
         customer_id,
         "redemption_confirmed",
-        "Redemption confirmed ✅",
+        "Redemption confirmed ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦",
         f"You earned +{total_delta} pts at {claim.get('merchant_name') or 'the store'} for \"{claim.get('deal_title')}\".",
         {"claim_id": claim["id"], "deal_id": claim["deal_id"], "points": total_delta},
     )
@@ -1576,7 +1576,7 @@ async def merchant_analytics(user=Depends(get_current_merchant)):
 
     heatmap = _seed_heatmap()
 
-    # Category benchmark (seeded — anonymized "similar merchants nearby")
+    # Category benchmark (seeded ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â anonymized "similar merchants nearby")
     benchmark = {
         "your_redemption_rate": redemption_rate,
         "category_avg_redemption_rate": 62.4,
@@ -1795,7 +1795,7 @@ SAMPLE_MERCHANTS = [
 
 # Sample-video library merchants can pick from
 # NOTE: Pexels started requiring a Referer header on some CDN edges in 2026
-# and Google's gtv-videos bucket 403s — swapped to samplelib + test-videos.co.uk
+# and Google's gtv-videos bucket 403s ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â swapped to samplelib + test-videos.co.uk
 # + ExoPlayer bucket which are unconditionally cache-friendly and work over
 # cellular on iOS/Android.
 SAMPLE_VIDEOS = [
@@ -1818,10 +1818,12 @@ async def list_sample_videos():
 
 
 # =========================================================================
-# MEDIA UPLOAD (images + videos) — served back via /api/media/<filename>
+# MEDIA UPLOAD (images + videos) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â served back via /api/media/<filename>
 # =========================================================================
 MAX_UPLOAD_MB = 25
 ALLOWED_MIME_PREFIXES = ("image/", "video/")
+# Cloudflare R2 uploads remain opt-in until the integration is verified.
+R2_UPLOADS_ENABLED = os.getenv("R2_UPLOADS_ENABLED", "false").strip().lower() == "true"
 HERO_MAX_EDGE_PX = 1200        # longest side after resize
 HERO_JPEG_QUALITY = 82         # good visual quality at ~30-40% of orig size
 
@@ -1843,7 +1845,7 @@ def _compress_image(raw: bytes, ct: str) -> tuple[bytes, str, str]:
         # Respect EXIF rotation (phones often set it)
         img = ImageOps.exif_transpose(img)
     except Exception:
-        # Not a decodable image — fall through with original bytes
+        # Not a decodable image ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â fall through with original bytes
         ext = ct.split("/")[-1] if "/" in ct else "bin"
         return raw, ct, ext
 
@@ -1873,7 +1875,7 @@ def _compress_image(raw: bytes, ct: str) -> tuple[bytes, str, str]:
 async def upload_media(file: UploadFile = File(...), user=Depends(get_current_user)):
     """Upload an image or video to Emergent Managed Object Storage.
     Returns `{url, path, filename, bytes, content_type}` where `url` is
-    `/api/files/<path>` (relative — frontend prepends BASE_URL).
+    `/api/files/<path>` (relative ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â frontend prepends BASE_URL).
     """
     from starlette.concurrency import run_in_threadpool
 
@@ -1907,17 +1909,34 @@ async def upload_media(file: UploadFile = File(...), user=Depends(get_current_us
             compressed_data, ct, new_ext = await run_in_threadpool(_compress_image, bytes(buf), ct)
             ext = new_ext
         except Exception:
-            # Never fail the upload on compression error — keep original bytes
+            # Never fail the upload on compression error ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â keep original bytes
             pass
 
     path, filename = build_object_path(user["id"], ext)
+
+    storage_provider = "emergent"
+
     try:
-        await run_in_threadpool(put_object, path, compressed_data, ct or "application/octet-stream")
+        if R2_UPLOADS_ENABLED:
+            await run_in_threadpool(
+                r2_storage.put_object,
+                path,
+                compressed_data,
+                ct or "application/octet-stream",
+            )
+            storage_provider = "r2"
+        else:
+            await run_in_threadpool(
+                put_object,
+                path,
+                compressed_data,
+                ct or "application/octet-stream",
+            )
     except StorageOutOfCredits as e:
         raise HTTPException(status_code=402, detail=str(e))
     except StorageUnavailable as e:
         raise HTTPException(status_code=503, detail=str(e))
-    except StorageError as e:
+    except (StorageError, r2_storage.R2StorageError) as e:
         raise HTTPException(status_code=502, detail=f"Object storage error: {e}")
 
     final_bytes = len(compressed_data)
@@ -1926,6 +1945,7 @@ async def upload_media(file: UploadFile = File(...), user=Depends(get_current_us
         "id": str(uuid.uuid4()),
         "owner_id": user["id"],
         "path": path,
+        "storage_provider": storage_provider,
         "filename": filename,
         "content_type": ct,
         "bytes": final_bytes,
@@ -1952,7 +1972,7 @@ async def download_media(obj_path: str, request: Request):
     can view (matches how `/api/media/*` static files already work).
 
     Honors HTTP Range requests so `<VideoView>` / `<video>` can seek and
-    buffer partial content — critical for smooth playback on cellular.
+    buffer partial content ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â critical for smooth playback on cellular.
     Responds with:
       - 200 + full body + `Accept-Ranges: bytes` when no Range header.
       - 206 + slice + `Content-Range` + `Accept-Ranges: bytes` for valid Range.
@@ -1961,12 +1981,101 @@ async def download_media(obj_path: str, request: Request):
     from starlette.concurrency import run_in_threadpool
     from fastapi.responses import Response
 
+    range_header = request.headers.get("range") or request.headers.get("Range")
+
     try:
-        data, content_type = await run_in_threadpool(get_object, obj_path)
+        upload_record = await db.uploads.find_one(
+            {"path": obj_path},
+            {"_id": 0, "storage_provider": 1},
+        )
+        storage_provider = (
+            upload_record.get("storage_provider", "emergent")
+            if upload_record
+            else "emergent"
+        )
+
+        if storage_provider == "r2" and range_header:
+            total, content_type = await run_in_threadpool(
+                r2_storage.get_object_info, obj_path
+            )
+
+            unit, _, rng = range_header.strip().partition("=")
+            if unit.lower() != "bytes" or "," in rng:
+                return Response(
+                    status_code=416,
+                    media_type=content_type,
+                    headers={
+                        "Accept-Ranges": "bytes",
+                        "Content-Range": f"bytes */{total}",
+                    },
+                )
+
+            start_s, _, end_s = rng.strip().partition("-")
+            try:
+                if start_s == "" and end_s == "":
+                    raise ValueError
+
+                if start_s == "":
+                    length = int(end_s)
+                    if length <= 0:
+                        raise ValueError
+                    start = max(0, total - length)
+                    end = total - 1
+                else:
+                    start = int(start_s)
+                    end = int(end_s) if end_s else total - 1
+
+                if start < 0 or start >= total or end < start:
+                    raise ValueError
+
+                end = min(end, total - 1)
+            except ValueError:
+                return Response(
+                    status_code=416,
+                    media_type=content_type,
+                    headers={
+                        "Accept-Ranges": "bytes",
+                        "Content-Range": f"bytes */{total}",
+                    },
+                )
+
+            chunk, content_type, confirmed_total = await run_in_threadpool(
+                r2_storage.get_object_range, obj_path, start, end
+            )
+            if confirmed_total != total or len(chunk) != end - start + 1:
+                raise HTTPException(
+                    status_code=502,
+                    detail="R2 returned an incomplete byte range",
+                )
+
+            return Response(
+                status_code=206,
+                content=chunk,
+                media_type=content_type,
+                headers={
+                    "Cache-Control": "public, max-age=86400",
+                    "Accept-Ranges": "bytes",
+                    "Content-Range": f"bytes {start}-{end}/{total}",
+                    "Content-Length": str(len(chunk)),
+                },
+            )
+
+        if storage_provider == "r2":
+            data, content_type = await run_in_threadpool(
+                r2_storage.get_object, obj_path
+            )
+        else:
+            data, content_type = await run_in_threadpool(
+                get_object, obj_path
+            )
+
     except StorageError as e:
         raise HTTPException(status_code=404, detail=f"Not found: {e}")
     except StorageUnavailable as e:
         raise HTTPException(status_code=503, detail=str(e))
+    except r2_storage.R2StorageError as e:
+        raise HTTPException(status_code=404, detail=f"Not found: {e}")
+
 
     total = len(data)
     common_headers = {
@@ -1980,9 +2089,9 @@ async def download_media(obj_path: str, request: Request):
         return Response(content=data, media_type=content_type, headers=common_headers)
 
     # Parse "bytes=start-end" per RFC 7233. Supports:
-    #   bytes=0-499   → 0..499
-    #   bytes=500-    → 500..end
-    #   bytes=-500    → last 500 bytes
+    #   bytes=0-499   ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ 0..499
+    #   bytes=500-    ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ 500..end
+    #   bytes=-500    ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ last 500 bytes
     # Multi-range (comma-separated) is intentionally NOT supported.
     unit, _, rng = range_header.strip().partition("=")
     if unit.lower() != "bytes" or "," in rng:
@@ -2033,7 +2142,7 @@ def _make_deals_for_merchant(merchant: dict) -> List[dict]:
 
     deals_per_category = {
         "food": [
-            ("Neapolitan Margherita — 40% Off", "Classic tomato, buffalo mozzarella & basil.", 18.0, 10.8, 40, 12, 30, "flash", "https://images.unsplash.com/photo-1594007654729-407eedc4be65?w=1000"),
+            ("Neapolitan Margherita ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â 40% Off", "Classic tomato, buffalo mozzarella & basil.", 18.0, 10.8, 40, 12, 30, "flash", "https://images.unsplash.com/photo-1594007654729-407eedc4be65?w=1000"),
             ("Truffle Pasta Tasting", "Fresh tagliatelle with black truffle shavings.", 26.0, 18.2, 30, None, 240, "regular", "https://images.unsplash.com/photo-1621996346565-e3dbc646d9a9?w=1000"),
             ("2-for-1 Aperitivo", "Any spritz + antipasti board.", 24.0, 12.0, 50, 20, 45, "video", "https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=1000"),
         ],
@@ -2042,7 +2151,7 @@ def _make_deals_for_merchant(merchant: dict) -> List[dict]:
             ("Sunday Fresh Fish Deal", "Wild-caught salmon fillet 500g.", 22.0, 15.4, 30, None, 300, "regular", "https://images.unsplash.com/photo-1544943910-4c1dc44aab44?w=1000"),
         ],
         "clothing": [
-            ("Denim Days — Buy 1 Get 1", "Selected premium denim jackets.", 120.0, 60.0, 50, 8, 55, "flash", "https://images.pexels.com/photos/18699670/pexels-photo-18699670.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"),
+            ("Denim Days ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Buy 1 Get 1", "Selected premium denim jackets.", 120.0, 60.0, 50, 8, 55, "flash", "https://images.pexels.com/photos/18699670/pexels-photo-18699670.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"),
             ("Winter Knits Collection", "Merino wool sweaters, all sizes.", 85.0, 68.0, 20, None, 1440, "regular", "https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=1000"),
             ("Sneaker Drop 20% Off", "New-season low tops.", 95.0, 76.0, 20, 15, 25, "video", "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1000"),
         ],
@@ -2278,7 +2387,7 @@ async def _startup():
         await seed_super_admin(db, hash_password)
         await seed_default_categories(db)
         await seed_default_settings(db)
-        # Seed a starter city (San Francisco) once — admin can add more.
+        # Seed a starter city (San Francisco) once ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â admin can add more.
         if await db.cities.count_documents({}) == 0:
             now = iso(now_utc())
             await db.cities.insert_one({

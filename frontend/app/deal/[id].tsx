@@ -123,47 +123,97 @@ export default function DealDetail() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={{ paddingBottom: 140 }} showsVerticalScrollIndicator={false}>
         {/* HERO */}
+
+        {/* HERO */}
         <View style={styles.hero}>
-          {/* Poster fallback — always render the image so the hero never goes
-              blank while the video buffers or when the platform (e.g. web
-              preview without H.264) can't decode the mp4. Use `contain` so
-              the whole image stays visible; the blurred cover behind fills
-              any letterbox area. */}
           {deal.image_url ? (
             <>
+              {/* Blurred background image */}
               <Image
                 source={{ uri: deal.image_url }}
-                style={StyleSheet.absoluteFillObject}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  right: 0,
+                  bottom: 0,
+                  left: 0,
+                }}
                 contentFit="cover"
                 blurRadius={20}
                 transition={200}
               />
-              <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(45,36,34,0.35)" }]} />
+
+              {/* Dark overlay */}
+              <View
+                style={[
+                  {
+                    position: "absolute",
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                    left: 0,
+                  },
+                  { backgroundColor: "rgba(45,36,34,0.35)" },
+                ]}
+              />
+
+              {/* Main image */}
               <Image
                 source={{ uri: deal.image_url }}
-                style={StyleSheet.absoluteFillObject}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  right: 0,
+                  bottom: 0,
+                  left: 0,
+                }}
                 contentFit="contain"
                 transition={200}
               />
             </>
           ) : (
-            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.surfaceTertiary }]} />
+            <View
+              style={[
+                {
+                  position: "absolute",
+                  top: 0,
+                  right: 0,
+                  bottom: 0,
+                  left: 0,
+                },
+                { backgroundColor: colors.surfaceTertiary },
+              ]}
+            />
           )}
+
           {deal.video_url ? (
             <VideoView
               key={deal.video_url}
               player={player}
-              style={StyleSheet.absoluteFillObject}
+              style={{
+                position: "absolute",
+                top: 0,
+                right: 0,
+                bottom: 0,
+                left: 0,
+              }}
               contentFit="cover"
               nativeControls={false}
-              allowsFullscreen={false}
             />
           ) : null}
+
           <LinearGradient
             colors={["rgba(45,36,34,0.6)", "transparent", "rgba(45,36,34,0.85)"]}
             locations={[0, 0.4, 1]}
-            style={StyleSheet.absoluteFillObject}
+            style={{
+              position: "absolute",
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+            }}
           />
+
           <View style={[styles.heroTop, { paddingTop: insets.top + spacing.sm }]}>
             <TouchableOpacity
               testID="deal-back-btn"
@@ -184,6 +234,7 @@ export default function DealDetail() {
               </TouchableOpacity>
             )}
           </View>
+
 
           <View style={styles.heroBottom}>
             {typeof deal.discount_pct === "number" && (

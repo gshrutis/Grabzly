@@ -41,9 +41,23 @@ function ReelItem({ deal, active, tabBarHeight }: { deal: Deal; active: boolean;
     return () => { try { player.pause(); } catch {} };
   }, [active, player]);
 
+    useEffect(() => {
+    const subscription = player.addListener("statusChange", (event) => {
+      console.log(`[Reels] ${deal.id} status:`, event.status);
+
+      if (event.error) {
+        console.error(`[Reels] ${deal.id} playback error:`, event.error);
+      }
+    });
+
+    return () => subscription.remove();
+  }, [player, deal.id]);
+
   const toggleMute = () => {
     const next = !muted;
-    player.muted = next;
+    // Expo Video requires updating this external player property directly.
+// eslint-disable-next-line react-hooks/immutability
+player.muted = next;
     setMuted(next);
   };
 
