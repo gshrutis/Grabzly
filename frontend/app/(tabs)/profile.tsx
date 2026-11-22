@@ -10,7 +10,7 @@ import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { useAuth } from "@/src/context/auth";
 import { useLocation } from "@/src/context/location";
-import { api } from "@/src/api/client";
+import { api, BASE_URL } from "@/src/api/client";
 import { CATEGORY_META, colors, radius, spacing, shadow } from "@/src/theme";
 import LocationPickerModal from "@/src/components/LocationPickerModal";
 
@@ -399,7 +399,7 @@ export default function Profile() {
           setShowPreciseLocPicker(false);
           // Optionally re-seed merchants around new anchor for demo continuity
           try {
-            await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/seed?lat=${picked.lat}&lng=${picked.lng}&force=false`, { method: "POST" });
+            await fetch(`${BASE_URL}/api/seed?lat=${picked.lat}&lng=${picked.lng}&force=false`, { method: "POST" });
           } catch {}
         }}
         initialLat={loc.lat}

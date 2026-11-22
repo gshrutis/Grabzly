@@ -14,7 +14,10 @@
         "NSCameraUsageDescription": "Scan customer QR codes and record promo videos",
         "NSMicrophoneUsageDescription": "Record audio for your promo videos",
         "NSPhotoLibraryUsageDescription": "Upload store photos and promo videos",
-        "NSLocationWhenInUseUsageDescription": "Show you deals from nearby merchants"
+        "NSLocationWhenInUseUsageDescription": "Show you deals from nearby merchants",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
       }
     },
     "android": {
@@ -23,6 +26,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.emergent.localdealsnow.iyks42",
+      "usesCleartextTraffic": true,
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",

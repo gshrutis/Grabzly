@@ -3,7 +3,15 @@ import { storage } from "@/src/utils/storage";
 import { File as ExpoFile } from "expo-file-system";
 import { fetch as expoFetch } from "expo/fetch";
 
-const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL || "http://192.168.1.6:8000";
+/** Live API. Phones cannot reach a developer-machine LAN address. */
+const LIVE_API = "http://16.179.128.88";
+
+function normalizeBase(raw?: string): string {
+  const value = (raw || LIVE_API).trim().replace(/\/+$/, "");
+  return value.replace(/\/api$/i, "");
+}
+
+export const BASE_URL = normalizeBase(process.env.EXPO_PUBLIC_BACKEND_URL);
 export const TOKEN_KEY = "hh_session_token";
 
 /**

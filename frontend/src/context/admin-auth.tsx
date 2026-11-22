@@ -6,10 +6,11 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
+import { BASE_URL } from "@/src/api/client";
 
 const KEY = "hh_admin_token";
 const ADMIN_KEY = "hh_admin_profile";
-const BASE = process.env.EXPO_PUBLIC_BACKEND_URL as string;
+const BASE = BASE_URL;
 
 export type AdminProfile = { id: string; email: string; name?: string; role: "admin" | "super_admin" };
 
