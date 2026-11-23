@@ -7,13 +7,13 @@ import { colors, spacing } from "@/src/theme";
 import AdminSearchBar from "@/src/components/AdminSearchBar";
 
 const NAV = [
-  { key: "dashboard",  label: "Dashboard",  icon: "grid-outline",       path: "/admin/(panel)" },
-  { key: "merchants",  label: "Merchants",  icon: "storefront-outline", path: "/admin/(panel)/merchants" },
-  { key: "deals",      label: "Deals",      icon: "pricetag-outline",   path: "/admin/(panel)/deals" },
-  { key: "customers",  label: "Customers",  icon: "people-outline",     path: "/admin/(panel)/customers" },
-  { key: "categories", label: "Categories", icon: "layers-outline",     path: "/admin/(panel)/categories" },
-  { key: "cities",     label: "Cities",     icon: "location-outline",   path: "/admin/(panel)/cities" },
-  { key: "settings",   label: "Settings",   icon: "settings-outline",   path: "/admin/(panel)/settings" },
+  { key: "dashboard",  label: "Dashboard",  icon: "grid-outline",       path: "/admin" },
+  { key: "merchants",  label: "Merchants",  icon: "storefront-outline", path: "/admin/merchants" },
+  { key: "deals",      label: "Deals",      icon: "pricetag-outline",   path: "/admin/deals" },
+  { key: "customers",  label: "Customers",  icon: "people-outline",     path: "/admin/customers" },
+  { key: "categories", label: "Categories", icon: "layers-outline",     path: "/admin/categories" },
+  { key: "cities",     label: "Cities",     icon: "location-outline",   path: "/admin/cities" },
+  { key: "settings",   label: "Settings",   icon: "settings-outline",   path: "/admin/settings" },
 ];
 
 export default function PanelLayout() {
@@ -38,7 +38,7 @@ export default function PanelLayout() {
           {sidebarWide && <Text style={styles.brandText}>Happy Hour Admin</Text>}
         </View>
         {NAV.map((n) => {
-          const active = pathname === n.path || (n.path !== "/admin/(panel)" && pathname.startsWith(n.path));
+          const active = n.path === "/admin" ? pathname === "/admin" : pathname === n.path || pathname.startsWith(n.path);
           return (
             <Pressable key={n.key} testID={`nav-${n.key}`}
               onPress={() => router.push(n.path as any)}

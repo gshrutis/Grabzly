@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  View, Text, StyleSheet, FlatList, Dimensions, TouchableOpacity, ActivityIndicator,
+  View, Text, StyleSheet, FlatList, Dimensions, TouchableOpacity, ActivityIndicator, Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -27,68 +27,137 @@ type Deal = {
   description?: string;
 };
 
-function ReelItem({ deal, active, tabBarHeight }: { deal: Deal; active: boolean; tabBarHeight: number }) {
-  const router = useRouter();
-  const player = useVideoPlayer(deal.video_url ?? null, (p) => {
-    p.loop = true;
-    p.muted = true;
-  });
-  const [muted, setMuted] = useState(true);
+function WebReelVideo({ url, muted }: { url: string; muted: boolean }) {
+  const hostRef = useRef<any>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
-    if (active) player.play();
-    else player.pause();
-    return () => { try { player.pause(); } catch {} };
-  }, [active, player]);
+    const host = hostRef.current as HTMLElement | null;
+    if (!host || typeof host.appendChild !== "function") return;
+    const video = document.createElement("video");
+    video.src = url;
+    video.muted = true;
+    video.defaultMuted = true;
+    video.loop = true;
+    video.autoplay = true;
+    video.controls = false;
+    video.removeAttribute("controls");
+    video.playsInline = true;
+    video.setAttribute("playsinline", "");
+    video.setAttribute("webkit-playsinline", "");
+    video.preload = "auto";
+    video.style.position = "absolute";
+    video.style.left = "0";
+    video.style.top = "0";
+    video.style.width = "100%";
+    video.style.height = "100%";
+    video.style.objectFit = "cover";
+    video.style.display = "block";
+    video.style.backgroundColor = "#000";
+    video.style.pointerEvents = "none";
+    const start = () => {
+      video.play().catch(() => {});
+    };
+    video.addEventListener("canplay", start);
+    host.appendChild(video);
+    videoRef.current = video;
+    start();
+    return () => {
+      video.removeEventListener("canplay", start);
+      video.pause();
+      video.remove();
+      videoRef.current = null;
+    };
+  }, [url]);
 
-    useEffect(() => {
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.muted = muted;
+  }, [muted]);
+
+  return <View ref={hostRef} style={styles.videoHost} />;
+}
+
+function NativeReelVideo({
+  url, muted, width, height,
+}: { url: string; muted: boolean; width: number; height: number }) {
+  const player = useVideoPlayer({ uri: url }, (p) => {
+    p.loop = true;
+    p.muted = true;
+    p.play();
+  });
+
+  useEffect(() => {
+    player.muted = muted;
+  }, [muted, player]);
+
+  useEffect(() => {
+    const start = () => {
+      try { player.play(); } catch {}
+    };
     const subscription = player.addListener("statusChange", (event) => {
-      console.log(`[Reels] ${deal.id} status:`, event.status);
-
-      if (event.error) {
-        console.error(`[Reels] ${deal.id} playback error:`, event.error);
-      }
+      if (event.status === "readyToPlay") start();
     });
-
-    return () => subscription.remove();
-  }, [player, deal.id]);
-
-  const toggleMute = () => {
-    const next = !muted;
-    // Expo Video requires updating this external player property directly.
-// eslint-disable-next-line react-hooks/immutability
-player.muted = next;
-    setMuted(next);
-  };
-
-  const cardHeight = SCREEN_H - tabBarHeight;
+    return () => {
+      subscription.remove();
+      try { player.pause(); } catch {}
+    };
+  }, [player]);
 
   return (
-    <View style={[styles.reel, { height: cardHeight }]} testID={`reel-${deal.id}`}>
-      {/* Poster fallback (also renders when the video fails to decode e.g. on
-          headless preview browsers without H.264). */}
-      {deal.image_url ? (
+    <View
+      style={{ position: "absolute", top: 0, left: 0, width, height }}
+      collapsable={false}
+      onLayout={() => { try { player.play(); } catch {} }}
+    >
+      <VideoView
+        player={player}
+        style={{ width, height }}
+        contentFit="cover"
+        nativeControls={false}
+        surfaceType="textureView"
+      />
+    </View>
+  );
+}
+
+function ActiveReelVideo(props: { url: string; muted: boolean; width: number; height: number }) {
+  if (Platform.OS === "web") return <WebReelVideo url={props.url} muted={props.muted} />;
+  return <NativeReelVideo {...props} />;
+}
+
+function ReelItem({ deal, active, height }: { deal: Deal; active: boolean; height: number }) {
+  const router = useRouter();
+  const [muted, setMuted] = useState(true);
+
+  const toggleMute = () => {
+    setMuted((current) => !current);
+  };
+
+  return (
+    <View style={[styles.reel, { height }]} testID={`reel-${deal.id}`}>
+      {deal.image_url && !(Platform.OS === "web" && active && deal.video_url) ? (
         <Image
           source={{ uri: deal.image_url }}
           style={StyleSheet.absoluteFillObject}
           contentFit="cover"
-          transition={200}
         />
-      ) : (
+      ) : null}
+      {!deal.image_url && !(active && deal.video_url) ? (
         <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.surfaceInverse }]} />
-      )}
-      {deal.video_url ? (
-        <VideoView
-          player={player}
-          style={StyleSheet.absoluteFillObject}
-          contentFit="cover"
-          nativeControls={false}
+      ) : null}
+      {active && deal.video_url ? (
+        <ActiveReelVideo
+          key={deal.video_url}
+          url={deal.video_url}
+          muted={muted}
+          width={SCREEN_W}
+          height={height}
         />
       ) : null}
       <LinearGradient
-        colors={["transparent", "rgba(0,0,0,0.85)"]}
-        locations={[0.4, 1]}
-        style={StyleSheet.absoluteFillObject}
+        colors={["transparent", "rgba(0,0,0,0.88)"]}
+        style={styles.reelShade}
+        pointerEvents="none"
       />
       <View style={styles.reelSideActions}>
         <TouchableOpacity onPress={toggleMute} style={styles.actionBtn} testID={`mute-${deal.id}`}>
@@ -133,6 +202,7 @@ export default function ReelsView() {
   const { loc, selectedCity } = useLocation();
 
   const tabBarHeight = 60 + insets.bottom;
+  const [pageHeight, setPageHeight] = useState(SCREEN_H - tabBarHeight);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -170,30 +240,37 @@ export default function ReelsView() {
   }
 
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      onLayout={(event) => {
+        const next = Math.round(event.nativeEvent.layout.height);
+        if (next > 0 && next !== pageHeight) setPageHeight(next);
+      }}
+    >
       <FlatList
         ref={listRef}
         data={deals}
         keyExtractor={(d) => d.id}
         renderItem={({ item, index }) => (
-          <ReelItem deal={item} active={index === activeIndex} tabBarHeight={tabBarHeight} />
+          <ReelItem deal={item} active={index === activeIndex} height={pageHeight} />
         )}
         pagingEnabled
+        removeClippedSubviews={false}
         showsVerticalScrollIndicator={false}
         snapToAlignment="start"
         decelerationRate="fast"
-        snapToInterval={SCREEN_H - tabBarHeight}
+        snapToInterval={pageHeight}
+        getItemLayout={(_, index) => ({ length: pageHeight, offset: pageHeight * index, index })}
+        scrollEventThrottle={32}
         onScroll={(e) => {
-  const height = SCREEN_H - tabBarHeight;
-  const index = Math.round(
-    e.nativeEvent.contentOffset.y / height
-  );
-
-  if (index !== activeIndex) {
-    setActiveIndex(index);
-  }
-}}
-scrollEventThrottle={16}
+          if (!pageHeight) return;
+          const index = Math.round(e.nativeEvent.contentOffset.y / pageHeight);
+          if (index >= 0 && index !== activeIndex) setActiveIndex(index);
+        }}
+        onMomentumScrollEnd={(e) => {
+          const index = Math.round(e.nativeEvent.contentOffset.y / pageHeight);
+          if (index !== activeIndex) setActiveIndex(index);
+        }}
       />
     </View>
   );
@@ -206,12 +283,31 @@ const styles = StyleSheet.create({
   },
   emptyText: { color: colors.muted, fontSize: 14, fontWeight: "600", textAlign: "center" },
   reel: { width: SCREEN_W, backgroundColor: "#000", position: "relative" },
+  video: { position: "absolute", top: 0, left: 0 },
+  videoHost: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1,
+    backgroundColor: "#000",
+  },
+  reelShade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 230,
+    ...Platform.select({ web: { zIndex: 2 }, default: {} }),
+  },
   reelSideActions: {
     position: "absolute",
     right: spacing.md,
     bottom: 200,
     gap: spacing.lg,
     alignItems: "center",
+    ...Platform.select({ web: { zIndex: 2 }, default: {} }),
   },
   actionBtn: {
     alignItems: "center",
@@ -227,6 +323,7 @@ const styles = StyleSheet.create({
     left: spacing.lg,
     right: 70,
     bottom: 32,
+    ...Platform.select({ web: { zIndex: 2 }, default: {} }),
   },
   discountBadge: {
     alignSelf: "flex-start",

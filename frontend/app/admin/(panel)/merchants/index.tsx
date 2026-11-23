@@ -25,7 +25,7 @@ export default function MerchantsPage() {
         { key: "rejected", label: "Rejected" },
         { key: "suspended", label: "Suspended" },
       ]}
-      detailRoute={(id) => `/admin/(panel)/merchants/${id}`}
+      detailRoute={(id) => `/admin/merchants/${id}`}
       columns={[
         { header: "Business", render: (r: any) => (
           <View>

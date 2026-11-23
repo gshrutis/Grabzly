@@ -32,7 +32,7 @@ export default function DealsPage() {
         { key: "draft", label: "Draft" },
         { key: "archived", label: "Archived" },
       ]}
-      detailRoute={(id) => `/admin/(panel)/deals/${id}`}
+      detailRoute={(id) => `/admin/deals/${id}`}
       columns={[
         { header: "Title",     render: (r: any) => <Cell>{r.title}</Cell> },
         { header: "Merchant",  render: (r: any) => <Cell secondary>{r.merchant_name || "—"}</Cell>, width: 160 },

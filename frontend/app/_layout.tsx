@@ -37,7 +37,8 @@ export default function RootLayout() {
                 <Stack.Screen name="index" />
                 <Stack.Screen name="onboarding-categories" />
                 <Stack.Screen name="(tabs)" />
-                <Stack.Screen name="sign-in" options={{ presentation: "modal" }} />
+                <Stack.Screen name="sign-in" />
+                <Stack.Screen name="admin" />
                 <Stack.Screen name="sign-up" options={{ presentation: "modal" }} />
                 <Stack.Screen name="deal/[id]" />
                 <Stack.Screen name="store/[id]" />

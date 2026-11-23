@@ -1,7 +1,5 @@
 import { Platform } from "react-native";
 import { storage } from "@/src/utils/storage";
-import { File as ExpoFile } from "expo-file-system";
-import { fetch as expoFetch } from "expo/fetch";
 
 /** Live API. Phones cannot reach a developer-machine LAN address. */
 const LIVE_API = "http://16.179.128.88";
@@ -13,6 +11,12 @@ function normalizeBase(raw?: string): string {
 
 export const BASE_URL = normalizeBase(process.env.EXPO_PUBLIC_BACKEND_URL);
 export const TOKEN_KEY = "hh_session_token";
+
+/** Join the API origin and path without producing `//api`, which FastAPI rejects. */
+function apiUrl(path: string): string {
+  const suffix = path.startsWith("/") ? path : `/${path}`;
+  return `${BASE_URL}/api${suffix}`.replace(/([^:]\/)\/+/g, "$1");
+}
 
 /**
  * Resolve any media URL to an absolute path the phone/web client can render.
@@ -73,7 +77,7 @@ async function request<T = any>(
   opts: { method?: string; body?: any; auth?: boolean; query?: Record<string, any> } = {},
 ): Promise<T> {
   const { method = "GET", body, auth = false, query } = opts;
-  let url = `${BASE_URL}/api${path}`;
+  let url = apiUrl(path);
   if (query) {
     const params = new URLSearchParams();
     Object.entries(query).forEach(([k, v]) => {
@@ -135,30 +139,26 @@ export const api = {
 
     form.append("file", file, filename);
   } else {
-    // Native Android/iOS upload using Expo File
-    const nativeFile = new ExpoFile(fileUri);
-    form.append("file", nativeFile, filename);
+    // React Native streams {uri, name, type} from disk. A Blob/File does not.
+    form.append("file", {
+      uri: fileUri,
+      name: filename,
+      type: mimeType || "application/octet-stream",
+    } as any);
   }
 
   const token = await storage.secureGet<string>(TOKEN_KEY, "");
 
-  const url = `${BASE_URL}/api/upload`;
-  const headers = {
+  const url = apiUrl("/upload");
+  const headers: Record<string, string> = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
-  const res =
-    Platform.OS === "web"
-      ? await fetch(url, {
-          method: "POST",
-          headers,
-          body: form,
-        })
-      : await expoFetch(url, {
-          method: "POST",
-          headers,
-          body: form,
-        });
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: form,
+  });
 
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;

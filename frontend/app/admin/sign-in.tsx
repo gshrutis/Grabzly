@@ -13,11 +13,11 @@ export default function AdminSignIn() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  React.useEffect(() => { if (admin) router.replace("/admin/(panel)"); }, [admin, router]);
+  React.useEffect(() => { if (admin) router.replace("/admin"); }, [admin, router]);
 
   const submit = async () => {
     setError(null); setBusy(true);
-    try { await login(email, password); router.replace("/admin/(panel)"); }
+    try { await login(email, password); router.replace("/admin"); }
     catch (e: any) { setError(e?.message || "Login failed"); }
     setBusy(false);
   };

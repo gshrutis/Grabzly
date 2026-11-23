@@ -4,9 +4,11 @@ from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+import hashlib
 import os
 import logging
 import math
+import re
 import random
 import secrets
 import string
@@ -42,6 +44,19 @@ app = FastAPI(title="HappyHour API")
 # files via /api/media and new files via /api/files/{path:path}.
 MEDIA_DIR = ROOT_DIR / "media"
 MEDIA_DIR.mkdir(exist_ok=True, parents=True)
+
+
+def _local_media_path(obj_path: str) -> Path:
+    """Resolve an upload path under MEDIA_DIR and reject traversal."""
+    if not obj_path or obj_path.startswith(("/", "\\")) or ".." in Path(obj_path).parts:
+        raise HTTPException(status_code=404, detail="Not found")
+    dest = (MEDIA_DIR / obj_path).resolve()
+    root = MEDIA_DIR.resolve()
+    if dest != root and root not in dest.parents:
+        raise HTTPException(status_code=404, detail="Not found")
+    return dest
+
+
 app.mount("/api/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
 api = APIRouter(prefix="/api")
 
@@ -1914,7 +1929,8 @@ async def upload_media(file: UploadFile = File(...), user=Depends(get_current_us
 
     path, filename = build_object_path(user["id"], ext)
 
-    storage_provider = "emergent"
+    storage_provider = "local"
+    emergent_key = (os.environ.get("EMERGENT_LLM_KEY") or "").strip()
 
     try:
         if R2_UPLOADS_ENABLED:
@@ -1925,13 +1941,19 @@ async def upload_media(file: UploadFile = File(...), user=Depends(get_current_us
                 ct or "application/octet-stream",
             )
             storage_provider = "r2"
-        else:
+        elif emergent_key:
             await run_in_threadpool(
                 put_object,
                 path,
                 compressed_data,
                 ct or "application/octet-stream",
             )
+            storage_provider = "emergent"
+        else:
+            dest = _local_media_path(path)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            await run_in_threadpool(dest.write_bytes, compressed_data)
+            storage_provider = "local"
     except StorageOutOfCredits as e:
         raise HTTPException(status_code=402, detail=str(e))
     except StorageUnavailable as e:
@@ -1986,7 +2008,7 @@ async def download_media(obj_path: str, request: Request):
     try:
         upload_record = await db.uploads.find_one(
             {"path": obj_path},
-            {"_id": 0, "storage_provider": 1},
+            {"_id": 0, "storage_provider": 1, "content_type": 1},
         )
         storage_provider = (
             upload_record.get("storage_provider", "emergent")
@@ -2060,7 +2082,16 @@ async def download_media(obj_path: str, request: Request):
                 },
             )
 
-        if storage_provider == "r2":
+        if storage_provider == "local":
+            local_path = _local_media_path(obj_path)
+            if not local_path.is_file():
+                raise HTTPException(status_code=404, detail="Not found")
+            data = await run_in_threadpool(local_path.read_bytes)
+            content_type = (
+                (upload_record or {}).get("content_type")
+                or "application/octet-stream"
+            )
+        elif storage_provider == "r2":
             data, content_type = await run_in_threadpool(
                 r2_storage.get_object, obj_path
             )
@@ -2195,7 +2226,7 @@ def _make_deals_for_merchant(merchant: dict) -> List[dict]:
             "expires_at": iso(now + timedelta(days=30)) if dtype == "video" else (iso(now + timedelta(minutes=expires_min)) if dtype != "regular" else iso(now + timedelta(days=30))),
             "per_customer_limit": 1,
             "image_url": img,
-            "video_url": SAMPLE_VIDEOS[i % len(SAMPLE_VIDEOS)] if dtype == "video" else None,
+            "video_url": SAMPLE_VIDEOS[int(hashlib.md5(f"{mid}:{i}".encode()).hexdigest()[:8], 16) % len(SAMPLE_VIDEOS)] if dtype == "video" else None,
             "terms": "One per customer. Show code in-store. Not combinable with other offers.",
             "rating": merchant.get("rating", 4.5),
             "lat": m_lat,
@@ -2281,6 +2312,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class CollapseSlashesMiddleware:
+    """Android/iOS builds that call `http://host//api/...` otherwise 404."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http":
+            path = scope.get("path") or ""
+            collapsed = re.sub(r"/{2,}", "/", path)
+            if collapsed != path:
+                scope["path"] = collapsed
+                if isinstance(scope.get("raw_path"), (bytes, bytearray)):
+                    scope["raw_path"] = collapsed.encode("utf-8")
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(CollapseSlashesMiddleware)
 
 
 # -------------------------------------------------------------------------

@@ -21,7 +21,7 @@ export default function CustomersPage() {
         { key: "blocked", label: "Blocked" },
         { key: "deactivated", label: "Deactivated" },
       ]}
-      detailRoute={(id) => `/admin/(panel)/customers/${id}`}
+      detailRoute={(id) => `/admin/customers/${id}`}
       columns={[
         { header: "Name",    render: (r: any) => <Cell>{r.name || "—"}</Cell> },
         { header: "Phone",   render: (r: any) => <Cell secondary>{r.phone || "—"}</Cell>, width: 150 },

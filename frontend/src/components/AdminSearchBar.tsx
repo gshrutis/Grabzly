@@ -87,7 +87,7 @@ export default function AdminSearchBar() {
                       icon="storefront" color={colors.brand}
                       title={m.name}
                       subtitle={`${m.category || "—"}${m.city ? " · " + m.city : ""}${m.phone ? " · " + m.phone : ""}`}
-                      onPress={() => go(`/admin/(panel)/merchants/${m.id}`)}
+                      onPress={() => go(`/admin/merchants/${m.id}`)}
                     />
                   ))}
                 </Section>
@@ -100,7 +100,7 @@ export default function AdminSearchBar() {
                       icon="pricetag" color="#8B4FEF"
                       title={d.title}
                       subtitle={`${d.merchant_name || "—"}${d.category ? " · " + d.category : ""}${d.status ? " · " + d.status : ""}`}
-                      onPress={() => go(`/admin/(panel)/deals/${d.id}`)}
+                      onPress={() => go(`/admin/deals/${d.id}`)}
                     />
                   ))}
                 </Section>
@@ -113,7 +113,7 @@ export default function AdminSearchBar() {
                       icon="person" color="#2BB8D6"
                       title={c.name || c.email || c.phone || "—"}
                       subtitle={`${c.email || c.phone || ""}${typeof c.points === "number" ? " · " + c.points + " pts" : ""}`}
-                      onPress={() => go(`/admin/(panel)/customers/${c.id}`)}
+                      onPress={() => go(`/admin/customers/${c.id}`)}
                     />
                   ))}
                 </Section>
