@@ -104,72 +104,20 @@ async function request<T = any>(
   return rewriteMedia(data) as T;
 }
 
-export const api = {
-  // Media upload — used by merchant deal form for image + video attachment.
-  // Accepts a local file URI (file:///, blob:, or web object URL) and returns
-  // a hosted URL like `/api/files/<path>` that any client can render.
-  //
-  // Platform handling:
-  //   • Web: fetch the URI → Blob → append as a real File (multipart parser
-  //     needs a Blob/File instance, NOT a `{uri,name,type}` plain object which
-  //     JSON.stringify's into garbage and produces the ‑1KB "[object Object]"
-  //     upload bug the merchant deal form was hitting).
-  //   • Native (iOS/Android/Expo Go): the React Native FormData polyfill
-  //     accepts `{uri,name,type}` and streams the file from disk; a Blob
-  //     would fail to serialize on native.
-  uploadMedia: async (fileUri: string, mimeType: string, name?: string) => {
-  if (!fileUri || typeof fileUri !== "string") {
-    throw new Error("uploadMedia requires a file URI string");
+function parseUploadBody(status: number, text: string) {
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
   }
-
-  const filename =
-    name ||
-    `upload_${Date.now()}.${(mimeType.split("/")[1] || "bin").split(";")[0]}`;
-
-  const form = new FormData();
-
-  if (Platform.OS === "web") {
-    // Keep existing web upload behavior unchanged
-    const blob = await (await fetch(fileUri)).blob();
-
-    const file: any =
-      typeof File !== "undefined"
-        ? new File([blob], filename, { type: mimeType || blob.type })
-        : blob;
-
-    form.append("file", file, filename);
-  } else {
-    // React Native streams {uri, name, type} from disk. A Blob/File does not.
-    form.append("file", {
-      uri: fileUri,
-      name: filename,
-      type: mimeType || "application/octet-stream",
-    } as any);
+  if (status < 200 || status >= 300) {
+    const detail = data?.detail ?? (text || `Upload failed (${status})`);
+    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
   }
-
-  const token = await storage.secureGet<string>(TOKEN_KEY, "");
-
-  const url = apiUrl("/upload");
-  const headers: Record<string, string> = {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers,
-    body: form,
-  });
-
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
-
-  if (!res.ok) {
-    const detail = data?.detail ?? `Upload failed (${res.status})`;
-    throw new Error(
-      typeof detail === "string" ? detail : JSON.stringify(detail)
-    );
+  if (!data?.url) {
+    throw new Error("Upload failed: server did not return a file URL");
   }
-
   return {
     ...data,
     url: resolveMediaUrl(data.url),
@@ -179,7 +127,58 @@ export const api = {
     bytes: number;
     content_type: string;
   };
-},
+}
+
+export const api = {
+  // Media upload — used by merchant deal form for image + video attachment.
+  // Accepts a local file URI (file:///, content://, blob:, or web object URL)
+  // and returns a hosted URL like `/api/files/<path>`.
+  //
+  // Platform handling:
+  //   • Web: fetch the URI → Blob → append as a real File.
+  //   • Native: Expo 57 installs expo/fetch as global fetch. That fetch only
+  //     accepts string/Blob form parts and throws
+  //     "Unsupported FormDataPart implementation" for the old
+  //     `{uri, name, type}` object. Stream the file with expo-file-system
+  //     multipart upload instead.
+  uploadMedia: async (fileUri: string, mimeType: string, name?: string) => {
+    if (!fileUri || typeof fileUri !== "string") {
+      throw new Error("uploadMedia requires a file URI string");
+    }
+
+    const filename =
+      name ||
+      `upload_${Date.now()}.${(mimeType.split("/")[1] || "bin").split(";")[0]}`;
+
+    const token = await storage.secureGet<string>(TOKEN_KEY, "");
+    const url = apiUrl("/upload");
+    const headers: Record<string, string> = {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    if (Platform.OS === "web") {
+      const blob = await (await fetch(fileUri)).blob();
+      const file: any =
+        typeof File !== "undefined"
+          ? new File([blob], filename, { type: mimeType || blob.type })
+          : blob;
+      const form = new FormData();
+      form.append("file", file, filename);
+      const res = await fetch(url, { method: "POST", headers, body: form });
+      return parseUploadBody(res.status, await res.text());
+    }
+
+    const { File: ExpoFile, UploadType } = await import("expo-file-system");
+    const nativeFile = new ExpoFile(fileUri);
+    const result = await nativeFile.upload(url, {
+      httpMethod: "POST",
+      uploadType: UploadType.MULTIPART,
+      fieldName: "file",
+      mimeType: mimeType || "application/octet-stream",
+      headers,
+    });
+    return parseUploadBody(result.status, result.body || "");
+  },
 
   // Auth
   register: (email: string, password: string, name: string, referral_code?: string) =>
